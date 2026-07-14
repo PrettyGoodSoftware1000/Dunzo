@@ -43,14 +43,46 @@
     </header>
 
     <main class="app-main">
-      <h2 class="page-title">List-O-Stuff</h2>
+      <div class="toolbar">
+        <div class="view-toggle">
+          <button id="view-list-btn" class="active">List</button>
+          <button id="view-cal-btn">Calendar</button>
+        </div>
+        <button id="search-toggle-btn" class="btn btn-small">🔍 Search</button>
+        <div id="search-bar" class="search-bar hidden">
+          <input id="search-input" type="text" placeholder="Search…" />
+          <select id="search-scope">
+            <option value="both">Name + content</option>
+            <option value="name">Name only</option>
+            <option value="content">Content only</option>
+          </select>
+          <button id="search-clear-btn" class="btn btn-small btn-ghost">✕</button>
+        </div>
+      </div>
 
-      <!-- Tag filter bar -->
+      <!-- Category filter bar -->
       <div id="tag-bar" class="tag-bar"></div>
 
-      <!-- Trackables list -->
+      <!-- List view -->
       <div id="trackable-list" class="trackable-list"></div>
       <p id="empty-msg" class="empty-msg hidden">Nothing here yet. Hit the + button to add your first Trackable!</p>
+
+      <!-- Calendar view -->
+      <div id="calendar-view" class="calendar hidden">
+        <div class="cal-header">
+          <h3 id="cal-month-label"></h3>
+          <div class="cal-nav">
+            <button id="cal-prev">‹</button>
+            <button id="cal-today">Today</button>
+            <button id="cal-next">›</button>
+          </div>
+        </div>
+        <div id="cal-grid" class="cal-grid"></div>
+      </div>
+
+      <div class="dev-footer">
+        <button id="dev-btn">developer</button>
+      </div>
     </main>
 
     <button id="add-btn" class="fab" title="Add a Trackable">+</button>
@@ -61,12 +93,8 @@
     <div class="modal">
       <h2 id="trackable-modal-title">New Trackable</h2>
 
-      <label class="field-label">Emoji &amp; Name</label>
-      <div class="name-row">
-        <button id="emoji-btn" class="emoji-btn" title="Pick an emoji">⭐</button>
-        <input id="trackable-name" type="text" placeholder="What are you tracking?" maxlength="100" />
-      </div>
-      <div id="emoji-picker" class="emoji-picker hidden"></div>
+      <label class="field-label">Name</label>
+      <input id="trackable-name" type="text" placeholder="What are you tracking?" maxlength="100" />
 
       <label class="field-label">Date type</label>
       <div id="date-type-row" class="choice-row">
@@ -76,13 +104,11 @@
         <button class="choice-btn" data-value="countdown">Countdown</button>
       </div>
 
-      <!-- Exact due date -->
       <div id="exact-fields" class="date-fields hidden">
         <label class="field-label">Due date</label>
         <input id="exact-date" type="date" />
       </div>
 
-      <!-- Goal date -->
       <div id="goal-fields" class="date-fields hidden">
         <label class="field-label">Goal is a specific…</label>
         <div id="goal-kind-row" class="choice-row">
@@ -95,19 +121,26 @@
         <input id="goal-month" type="month" class="hidden" />
       </div>
 
-      <!-- Countdown -->
       <div id="countdown-fields" class="date-fields hidden">
         <label class="field-label">How many days?</label>
         <input id="countdown-days" type="number" min="1" max="3650" placeholder="e.g. 30" />
         <small class="hint">Counts down starting today.</small>
       </div>
 
-      <label class="field-label">Tags</label>
+      <label class="field-label">Categories</label>
       <div id="modal-tag-list" class="modal-tag-list"></div>
-      <div class="new-tag-row">
-        <input id="new-tag-name" type="text" placeholder="New tag name (emojis ok!)" maxlength="40" />
-        <input id="new-tag-color" type="color" value="#4f8ef7" title="Tag color" />
-        <button id="create-tag-btn" class="btn btn-small">Add tag</button>
+
+      <div class="new-cat-box">
+        <div class="new-cat-row">
+          <button id="cat-emoji-btn" class="emoji-btn" title="Pick an emoji">⭐</button>
+          <input id="new-tag-name" type="text" placeholder="New category name" maxlength="40" />
+          <button id="create-tag-btn" class="btn btn-small">Add</button>
+        </div>
+        <div id="cat-emoji-picker" class="emoji-picker hidden">
+          <input id="emoji-search" type="text" placeholder="Search emojis… (e.g. dog, food, heart)" />
+          <div id="emoji-grid" class="emoji-grid"></div>
+        </div>
+        <div id="cat-color-palette" class="color-palette"></div>
       </div>
 
       <p id="trackable-error" class="error-text hidden"></p>
@@ -119,28 +152,60 @@
     </div>
   </div>
 
-  <!-- ======== NOTES MODAL ======== -->
-  <div id="notes-modal" class="modal-overlay hidden">
-    <div class="modal">
-      <h2 id="notes-modal-title">Notes</h2>
-      <div id="notes-list" class="notes-list"></div>
-
-      <div class="note-compose">
-        <textarea id="note-text" placeholder="Write a note…" rows="3"></textarea>
-        <div class="note-compose-row">
-          <label class="btn btn-small btn-ghost file-label">
-            📎 Add image
-            <input id="note-image-input" type="file" accept="image/jpeg,image/png,image/gif" multiple hidden />
-          </label>
-          <span id="note-image-count" class="hint"></span>
-          <button id="note-save-btn" class="btn btn-small btn-primary">Save note</button>
-        </div>
-        <div id="note-image-previews" class="note-image-previews"></div>
-        <p id="notes-error" class="error-text hidden"></p>
+  <!-- ======== TRACKABLE VIEW (whiteboard) ======== -->
+  <div id="tview-overlay" class="tview-overlay hidden">
+    <div class="tview">
+      <div class="tview-header">
+        <span id="tview-emoji" class="tview-emoji"></span>
+        <span id="tview-title" class="tview-title"></span>
+        <span id="tview-date" class="tview-date"></span>
+        <button id="tview-link-btn" class="icon-btn" title="Link related trackables">🔗</button>
+        <button id="tview-edit-btn" class="icon-btn" title="Edit">✏️</button>
+        <button id="tview-dunzo-btn" class="icon-btn" title="Mark Dunzo">✅</button>
+        <button id="tview-delete-btn" class="icon-btn subtle" title="Delete this trackable">🗑</button>
+        <button id="tview-close-btn" class="icon-btn tview-close" title="Close">✕</button>
       </div>
+      <div id="tview-related" class="tview-related"></div>
+      <div class="board-toolbar">
+        <button id="board-add-text" class="btn btn-small">+ Text</button>
+        <label class="btn btn-small file-label">
+          + Image
+          <input id="board-image-input" type="file" accept="image/jpeg,image/png,image/gif" multiple hidden />
+        </label>
+        <span id="board-error" class="error-text hidden"></span>
+        <span class="hint">Drag &amp; drop images anywhere · drag items by their handle · resize from the corner</span>
+      </div>
+      <div id="board-wrap" class="board-wrap">
+        <div id="board" class="board"></div>
+      </div>
+    </div>
+  </div>
 
+  <!-- ======== LINK PICKER MODAL ======== -->
+  <div id="link-modal" class="modal-overlay hidden">
+    <div class="modal">
+      <h2>🔗 Related Trackables</h2>
+      <p class="hint">Select trackables related to this one. They'll show as clickable chips for quick navigation.</p>
+      <div id="link-list" class="link-list" style="margin-top:12px;"></div>
       <div class="modal-actions">
-        <button id="notes-close" class="btn btn-ghost">Close</button>
+        <button id="link-cancel" class="btn btn-ghost">Cancel</button>
+        <button id="link-save" class="btn btn-primary">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ======== DEV MENU MODAL ======== -->
+  <div id="dev-modal" class="modal-overlay hidden">
+    <div class="modal">
+      <h2>Developer menu</h2>
+      <div class="danger-zone">
+        <p class="hint" style="margin-bottom:10px;">Deletes ALL Dunzo data stored in Firebase for your account:
+          every trackable, category, note, and whiteboard item. Cannot be undone.</p>
+        <button id="dev-clear-btn" class="btn btn-danger">Clear Firebase data</button>
+        <span id="dev-status" class="hint" style="margin-left:10px;"></span>
+      </div>
+      <div class="modal-actions">
+        <button id="dev-close" class="btn btn-ghost">Close</button>
       </div>
     </div>
   </div>

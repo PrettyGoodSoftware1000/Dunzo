@@ -5,17 +5,20 @@ A browser-based tracker for your stuff. Plain HTML/CSS/JavaScript hosted on GitH
 ## What it does
 
 - **Sign in with Google** — each user's data is private to their account.
-- **List-O-Stuff** — your list of "Trackables," each with an emoji, a name, and color-coded tags (emojis allowed in tag names).
+- **Dark, clean list view** — narrow rows with a clickable, color-coded title and a Dunzo! button.
+- **Categories** — each has a name, an emoji (searchable picker with 300+ emojis), and a color from a palette of 24 bright, dark-background-friendly colors. Titles take their category's color; the category bar at the top filters the list.
 - **Date types** for each Trackable:
   - **Exact Due Date** — a specific day.
   - **Goal Date** — a specific day, week, or month. For sorting, a goal week's due date is the Sunday ending that week; a goal month's is its last day.
   - **Countdown** — enter a number of days (e.g. 30) and it counts down from today: "30 days left," "29 days left," … then "overdue."
   - **None** — just shows how many days it's been listed.
 - **Sorting** — by effective due date, soonest first. Dateless items sit at the bottom, oldest first. Countdown items sort by the date they're counting down to, but that date is never shown.
-- **Tags** — the tag bar at the top fills in as you create tags. Click a tag to filter the list to matching Trackables; click again to clear the filter.
-- **Dunzo!** — marks a Trackable complete. It disappears from the default view and gets the green **Dunzo ✅** tag; click that tag in the bar to see completed items (and un-Dunzo them if needed).
-- **Edit Me** — change anything about a Trackable.
-- **Notes** — attach text notes and images (JPEG, PNG, or auto-playing GIFs) to any Trackable. Images are compressed in your browser and stored inside the database, so everything stays on Firebase's free tier — no credit card needed. GIFs must be under ~350 KB (they can't be recompressed without losing animation).
+- **Trackable view** — click a title to open a large whiteboard for that Trackable. Add draggable, resizable text boxes and images (JPEG, PNG, or auto-playing GIFs — drag & drop them anywhere on the board). Images are compressed in your browser and stored inside the database, so everything stays on Firebase's free tier — no credit card needed. GIFs must be under ~350 KB (they can't be recompressed without losing animation). Edit, Dunzo, a subtle delete, and an X to close all live in the header.
+- **🔗 Linking** — relate Trackables to each other; linked items show as clickable chips for quick navigation.
+- **Search** — by Trackable name, whiteboard text content, or both.
+- **Calendar view** — a month grid showing Trackables on their effective due dates; click one to open it.
+- **Dunzo!** — marks a Trackable complete. It disappears from the default view and gets the green **Dunzo ✅** chip; click that chip in the bar to see completed items (and un-Dunzo them if needed).
+- **Developer menu** — a subtle "developer" link at the bottom opens a menu with a "Clear Firebase data" button that wipes all Dunzo data for your account (double confirmation) for a fresh start.
 
 ## One-time setup
 
