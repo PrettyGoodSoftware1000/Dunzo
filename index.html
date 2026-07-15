@@ -37,6 +37,9 @@
     <header class="app-header">
       <h1>✅ Dunzo</h1>
       <div class="header-right">
+        <button id="export-btn" class="btn btn-small btn-ghost">Export data</button>
+        <button id="import-btn" class="btn btn-small btn-ghost">Import data</button>
+        <input id="import-file-input" type="file" accept="application/json,.json" hidden />
         <span id="user-name" class="user-name"></span>
         <button id="signout-btn" class="btn btn-small btn-ghost">Sign out</button>
       </div>
@@ -133,8 +136,7 @@
       <div class="new-cat-box">
         <div class="new-cat-row">
           <button id="cat-emoji-btn" class="emoji-btn" title="Pick an emoji">⭐</button>
-          <input id="new-tag-name" type="text" placeholder="New category name" maxlength="40" />
-          <button id="create-tag-btn" class="btn btn-small">Add</button>
+          <input id="new-tag-name" type="text" placeholder="New category name (created when you save)" maxlength="40" />
         </div>
         <div id="cat-emoji-picker" class="emoji-picker hidden">
           <input id="emoji-search" type="text" placeholder="Search emojis… (e.g. dog, food, heart)" />
@@ -159,10 +161,10 @@
         <span id="tview-emoji" class="tview-emoji"></span>
         <span id="tview-title" class="tview-title"></span>
         <span id="tview-date" class="tview-date"></span>
-        <button id="tview-link-btn" class="icon-btn" title="Link related trackables">🔗</button>
-        <button id="tview-edit-btn" class="icon-btn" title="Edit">✏️</button>
+        <button id="tview-link-btn" class="outline-btn" title="Link related trackables">Connect it.</button>
+        <button id="tview-edit-btn" class="outline-btn" title="Edit this trackable">Edit</button>
         <button id="tview-dunzo-btn" class="icon-btn" title="Mark Dunzo">✅</button>
-        <button id="tview-delete-btn" class="icon-btn subtle" title="Delete this trackable">🗑</button>
+        <button id="tview-delete-btn" class="icon-btn subtle" title="Delete this trackable">☠️</button>
         <button id="tview-close-btn" class="icon-btn tview-close" title="Close">✕</button>
       </div>
       <div id="tview-related" class="tview-related"></div>
@@ -173,7 +175,7 @@
           <input id="board-image-input" type="file" accept="image/jpeg,image/png,image/gif" multiple hidden />
         </label>
         <span id="board-error" class="error-text hidden"></span>
-        <span class="hint">Drag &amp; drop images anywhere · drag items by their handle · resize from the corner</span>
+        <span class="hint">drag &amp; drop images anywhere</span>
       </div>
       <div id="board-wrap" class="board-wrap">
         <div id="board" class="board"></div>

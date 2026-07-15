@@ -124,7 +124,17 @@ body {
 .search-bar input:focus { outline: 2px solid var(--primary); border-color: transparent; }
 
 /* ---------- Category (tag) bar ---------- */
-.tag-bar { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 18px; min-height: 8px; }
+.tag-bar { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 18px; min-height: 8px; align-items: center; }
+.remove-cat-btn {
+  border: 1px solid var(--danger);
+  background: transparent;
+  color: var(--danger);
+  border-radius: 999px;
+  padding: 4px 12px;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+.remove-cat-btn:hover { background: var(--danger); color: #fff; }
 .tag-chip {
   border: 2px solid transparent;
   border-radius: 999px;
@@ -274,7 +284,7 @@ body {
   align-items: flex-start;
   justify-content: center;
   padding: 5vh 12px;
-  z-index: 100;
+  z-index: 250; /* above the trackable view (150) so modals pop over the whiteboard */
   overflow-y: auto;
 }
 .modal {
@@ -441,8 +451,22 @@ body {
   cursor: pointer;
 }
 .tview-header .icon-btn:hover { background: var(--card-hover); }
-.tview-header .icon-btn.subtle { background: none; border-color: transparent; color: var(--faint); }
-.tview-header .icon-btn.subtle:hover { color: var(--danger); }
+.tview-header .icon-btn.subtle { background: none; border-color: transparent; color: var(--faint); filter: grayscale(1) opacity(0.55); }
+.tview-header .icon-btn.subtle:hover { color: var(--danger); filter: none; }
+
+/* Outlined text buttons in the trackable view, styled like the Dunzo! row button */
+.outline-btn {
+  border: 1px solid var(--success);
+  background: transparent;
+  color: var(--success);
+  border-radius: 6px;
+  padding: 6px 12px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.outline-btn:hover { background: var(--success); color: #fff; }
 .tview-close { font-size: 1.3rem !important; }
 
 .tview-related { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 16px 0; }

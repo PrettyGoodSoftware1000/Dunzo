@@ -304,6 +304,21 @@ function renderTagBar() {
         render();
       }));
   }
+
+  // Selecting a category no trackable uses offers to remove it
+  if (activeTagFilter && activeTagFilter !== DUNZO_TAG &&
+      !trackables.some((t) => (t.tagNames || []).includes(activeTagFilter))) {
+    const btn = document.createElement("button");
+    btn.className = "remove-cat-btn";
+    btn.textContent = `Remove category "${activeTagFilter}"`;
+    btn.addEventListener("click", async () => {
+      categories = categories.filter((c) => c.name !== activeTagFilter);
+      activeTagFilter = null;
+      await saveCategories();
+      render();
+    });
+    bar.appendChild(btn);
+  }
 }
 
 function makeTagChip(cat, active, onClick) {
@@ -494,7 +509,7 @@ function renderEmojiGrid(filter) {
   const matches = q
     ? EMOJI_DATA.filter(([, kw]) => kw.includes(q))
     : EMOJI_DATA;
-  for (const [emoji] of matches.slice(0, 200)) {
+  for (const [emoji] of matches) {
     const b = document.createElement("button");
     b.type = "button";
     b.textContent = emoji;
@@ -624,20 +639,6 @@ function renderModalTags() {
   }
 }
 
-$("create-tag-btn").addEventListener("click", async () => {
-  const name = $("new-tag-name").value.trim();
-  if (!name) return;
-  if (categories.some((c) => c.name === name)) {
-    showTrackableError("A category with that name already exists.");
-    return;
-  }
-  categories.push({ name, color: pickedColor, emoji: pickedEmoji });
-  modalState.selectedTags.add(name);
-  $("new-tag-name").value = "";
-  renderModalTags();
-  await saveCategories();
-});
-
 function showTrackableError(msg) {
   $("trackable-error").textContent = msg;
   $("trackable-error").classList.remove("hidden");
@@ -646,6 +647,17 @@ function showTrackableError(msg) {
 $("trackable-save").addEventListener("click", async () => {
   const name = $("trackable-name").value.trim();
   if (!name) return showTrackableError("Give your trackable a name.");
+
+  // A name typed in the new-category box becomes a category on save
+  const newCatName = $("new-tag-name").value.trim();
+  if (newCatName) {
+    if (!categories.some((c) => c.name === newCatName)) {
+      categories.push({ name: newCatName, color: pickedColor, emoji: pickedEmoji });
+      await saveCategories();
+    }
+    modalState.selectedTags.add(newCatName);
+    $("new-tag-name").value = "";
+  }
 
   const data = {
     name,
@@ -1097,6 +1109,126 @@ $("link-save").addEventListener("click", async () => {
 // ============================================================
 $("dev-btn").addEventListener("click", () => $("dev-modal").classList.remove("hidden"));
 $("dev-close").addEventListener("click", () => $("dev-modal").classList.add("hidden"));
+
+// ============================================================
+// Export / Import
+// ============================================================
+const tsToIso = (ts) => (ts?.toDate ? ts.toDate().toISOString() : null);
+
+$("export-btn").addEventListener("click", async () => {
+  const btn = $("export-btn");
+  btn.disabled = true;
+  btn.textContent = "Exporting…";
+  try {
+    const uid = currentUser.uid;
+    const out = {
+      app: "dunzo",
+      version: 2,
+      exportedAt: new Date().toISOString(),
+      categories,
+      trackables: [],
+    };
+    for (const t of trackables) {
+      const boardSnap = await getDocs(collection(db, "users", uid, "trackables", t.id, "board"));
+      out.trackables.push({
+        ...t,
+        createdAt: tsToIso(t.createdAt),
+        doneAt: tsToIso(t.doneAt),
+        board: boardSnap.docs.map((d) => {
+          const item = d.data();
+          return { ...item, createdAt: tsToIso(item.createdAt) };
+        }),
+      });
+    }
+    const blob = new Blob([JSON.stringify(out, null, 1)], { type: "application/json" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `dunzo-export-${new Date().toISOString().slice(0, 10)}.json`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  } catch (err) {
+    alert("Export failed: " + err.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "Export data";
+  }
+});
+
+$("import-btn").addEventListener("click", () => $("import-file-input").click());
+
+$("import-file-input").addEventListener("change", async (e) => {
+  const file = e.target.files[0];
+  e.target.value = "";
+  if (!file) return;
+
+  let data;
+  try {
+    data = JSON.parse(await file.text());
+  } catch {
+    alert("That file isn't valid JSON.");
+    return;
+  }
+  if (data.app !== "dunzo" || !Array.isArray(data.trackables)) {
+    alert("That doesn't look like a Dunzo export file.");
+    return;
+  }
+  const catCount = (data.categories || []).length;
+  if (!confirm(`Import ${data.trackables.length} trackable(s) and ${catCount} categor${catCount === 1 ? "y" : "ies"}? They'll be added alongside your existing data.`)) return;
+
+  const btn = $("import-btn");
+  btn.disabled = true;
+  btn.textContent = "Importing…";
+  try {
+    let catsChanged = false;
+    for (const c of data.categories || []) {
+      if (c?.name && !categories.some((x) => x.name === c.name)) {
+        categories.push({ name: c.name, color: c.color || CATEGORY_COLORS[0], emoji: c.emoji || "" });
+        catsChanged = true;
+      }
+    }
+    if (catsChanged) await saveCategories();
+
+    // First pass: create trackables and their board items, remembering new ids
+    const idMap = new Map();
+    for (const t of data.trackables) {
+      const ref = await addDoc(collection(db, "users", currentUser.uid, "trackables"), {
+        name: t.name || "Untitled",
+        dateType: t.dateType || "none",
+        exactDate: t.exactDate ?? null,
+        goalKind: t.goalKind ?? null,
+        goalValue: t.goalValue ?? null,
+        countdownDays: t.countdownDays ?? null,
+        tagNames: t.tagNames || [],
+        done: !!t.done,
+        doneAt: t.doneAt ? new Date(t.doneAt) : null,
+        contentText: t.contentText || "",
+        relatedIds: [],
+        createdAt: t.createdAt ? new Date(t.createdAt) : serverTimestamp(),
+      });
+      idMap.set(t.id, ref.id);
+      for (const item of t.board || []) {
+        await addDoc(collection(ref, "board"), {
+          ...item,
+          createdAt: item.createdAt ? new Date(item.createdAt) : serverTimestamp(),
+        });
+      }
+    }
+
+    // Second pass: restore links between imported trackables using the new ids
+    for (const t of data.trackables) {
+      const mapped = (t.relatedIds || []).map((r) => idMap.get(r)).filter(Boolean);
+      if (mapped.length) {
+        await updateDoc(trackableRef(idMap.get(t.id)), { relatedIds: mapped });
+      }
+    }
+    alert(`Import complete: ${data.trackables.length} trackable(s) added.`);
+  } catch (err) {
+    alert("Import failed: " + err.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "Import data";
+  }
+});
 
 $("dev-clear-btn").addEventListener("click", async () => {
   if (!confirm("Really delete ALL Dunzo data in Firebase for your account? This cannot be undone.")) return;
