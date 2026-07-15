@@ -1195,19 +1195,115 @@ function dataUrlToHex(dataUrl) {
   return hex;
 }
 
+function bytesToHex(bytes) {
+  let hex = "";
+  for (let i = 0; i < bytes.length; i++) {
+    hex += bytes[i].toString(16).padStart(2, "0");
+    if ((i + 1) % 64 === 0) hex += "\n";
+  }
+  return hex;
+}
+
+/**
+ * Build a Windows metafile (WMF) that paints the image as an uncompressed
+ * 24-bit bitmap. This is the legacy image form that readers like WordPad —
+ * which ignore modern jpegblip/pngblip pictures — actually render, so each
+ * RTF image is written twice: modern blip + this fallback (same as MS Word).
+ */
+function wmfFallback(img, maxDim = 512) {
+  const scale = Math.min(1, maxDim / Math.max(img.naturalWidth, img.naturalHeight));
+  const w = Math.max(1, Math.round(img.naturalWidth * scale));
+  const h = Math.max(1, Math.round(img.naturalHeight * scale));
+
+  // Pixels via canvas, flattened onto white (DIBs have no alpha)
+  const canvas = document.createElement("canvas");
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext("2d");
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, w, h);
+  ctx.drawImage(img, 0, 0, w, h);
+  const rgba = ctx.getImageData(0, 0, w, h).data;
+
+  // DIB: BITMAPINFOHEADER + bottom-up BGR rows padded to 4 bytes
+  const rowSize = Math.ceil((w * 3) / 4) * 4;
+  const dib = new Uint8Array(40 + rowSize * h);
+  const dv = new DataView(dib.buffer);
+  dv.setUint32(0, 40, true);            // header size
+  dv.setInt32(4, w, true);
+  dv.setInt32(8, h, true);
+  dv.setUint16(12, 1, true);            // planes
+  dv.setUint16(14, 24, true);           // bits per pixel
+  dv.setUint32(20, rowSize * h, true);  // image size
+  dv.setInt32(24, 2835, true);          // 72dpi in px/meter
+  dv.setInt32(28, 2835, true);
+  for (let y = 0; y < h; y++) {
+    const srcRow = (h - 1 - y) * w;
+    let off = 40 + y * rowSize;
+    for (let x = 0; x < w; x++) {
+      const s = (srcRow + x) * 4;
+      dib[off++] = rgba[s + 2];
+      dib[off++] = rgba[s + 1];
+      dib[off++] = rgba[s];
+    }
+  }
+
+  // WMF records: each is size(dword, in 16-bit words) + function + params
+  const chunks = [];
+  const pushRec = (func, params, extra) => {
+    const extraLen = extra ? extra.length + (extra.length % 2) : 0;
+    const words = 3 + params.length + extraLen / 2;
+    const rec = new Uint8Array(6 + params.length * 2 + extraLen);
+    const rdv = new DataView(rec.buffer);
+    rdv.setUint32(0, words, true);
+    rdv.setUint16(4, func, true);
+    params.forEach((p, i) => rdv.setUint16(6 + i * 2, p & 0xffff, true));
+    if (extra) rec.set(extra, 6 + params.length * 2);
+    chunks.push(rec);
+    return words;
+  };
+
+  pushRec(0x0103, [8]);        // SetMapMode MM_ANISOTROPIC
+  pushRec(0x020b, [0, 0]);     // SetWindowOrg (y, x)
+  pushRec(0x020c, [h, w]);     // SetWindowExt (y, x)
+  // StretchDIB: rop=SRCCOPY (dword 0x00CC0020), usage, srcH..srcX, dstH..dstX, DIB
+  const maxRec = pushRec(0x0f43, [0x0020, 0x00cc, 0, h, w, 0, 0, h, w, 0, 0], dib);
+  pushRec(0x0000, []);         // EOF
+
+  const totalWords = 9 + chunks.reduce((s, c) => s + c.length / 2, 0);
+  const wmf = new Uint8Array(totalWords * 2);
+  const hdv = new DataView(wmf.buffer);
+  hdv.setUint16(0, 1, true);          // memory metafile
+  hdv.setUint16(2, 9, true);          // header size in words
+  hdv.setUint16(4, 0x0300, true);     // version
+  hdv.setUint32(6, totalWords, true); // total size in words
+  hdv.setUint16(10, 0, true);         // object count
+  hdv.setUint32(12, maxRec, true);    // largest record in words
+  hdv.setUint16(16, 0, true);         // parameter count
+  let off = 18;
+  for (const c of chunks) { wmf.set(c, off); off += c.length; }
+
+  return { hex: bytesToHex(wmf), w, h };
+}
+
 /** Prepare an image for RTF embedding. GIFs become PNG stills (RTF can't animate). */
 async function imageForRtf(src) {
   const img = new Image();
   await new Promise((res, rej) => { img.onload = res; img.onerror = rej; img.src = src; });
   const w = img.naturalWidth, h = img.naturalHeight;
+  let blip, hex;
   if (src.startsWith("data:image/jpeg")) {
-    return { blip: "jpegblip", hex: dataUrlToHex(src), w, h };
+    blip = "jpegblip";
+    hex = dataUrlToHex(src);
+  } else {
+    const canvas = document.createElement("canvas");
+    canvas.width = w;
+    canvas.height = h;
+    canvas.getContext("2d").drawImage(img, 0, 0);
+    blip = "pngblip";
+    hex = dataUrlToHex(canvas.toDataURL("image/png"));
   }
-  const canvas = document.createElement("canvas");
-  canvas.width = w;
-  canvas.height = h;
-  canvas.getContext("2d").drawImage(img, 0, 0);
-  return { blip: "pngblip", hex: dataUrlToHex(canvas.toDataURL("image/png")), w, h };
+  return { blip, hex, w, h, wmf: wmfFallback(img) };
 }
 
 function hexToRtfColor(hex) {
@@ -1255,12 +1351,21 @@ async function buildRtf(entries) {
         body += `{\\pard\\sa120\\cf1 ${rtfEscape(item.text)}\\par}\n`;
       } else if (item.type === "image" && item.src) {
         try {
-          const { blip, hex, w, h } = await imageForRtf(item.src);
+          const { blip, hex, w, h, wmf } = await imageForRtf(item.src);
           // 15 twips per pixel at 96dpi; cap width at 6in (8640 twips)
           const scale = Math.min(1, 8640 / (w * 15));
           const wgoal = Math.round(w * 15 * scale);
           const hgoal = Math.round(h * 15 * scale);
-          body += `{\\pard\\sa120 {\\pict\\${blip}\\picw${w}\\pich${h}\\picwgoal${wgoal}\\pichgoal${hgoal}\n${hex}}\\par}\n`;
+          // Metafile \picw/\pich are in hundredths of a millimeter
+          const hmmW = Math.round(w * 2540 / 96);
+          const hmmH = Math.round(h * 2540 / 96);
+          // Dual form like MS Word writes: modern readers use the shppict
+          // blip, legacy readers (e.g. WordPad) fall back to the metafile.
+          body +=
+            `{\\pard\\sa120 ` +
+            `{\\*\\shppict{\\pict\\${blip}\\picw${w}\\pich${h}\\picwgoal${wgoal}\\pichgoal${hgoal}\n${hex}}}` +
+            `{\\nonshppict{\\pict\\wmetafile8\\picw${hmmW}\\pich${hmmH}\\picwgoal${wgoal}\\pichgoal${hgoal}\n${wmf.hex}}}` +
+            `\\par}\n`;
         } catch {
           body += `{\\pard\\sa120\\i\\cf2 [an image could not be embedded]\\par}\n`;
         }

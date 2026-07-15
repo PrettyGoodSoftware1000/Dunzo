@@ -9,7 +9,7 @@ const stub = fs.readFileSync(path.join(SCRATCH, "firebase-stub.mjs"), "utf8");
 
 // Tiny valid 4x4 red PNG
 const pngB64 =
-  "iVBORw0KGgoAAAANSUhEUgAAAAQAAAAECAIAAAAmkwkpAAAAFElEQVR4nGP8z8DwnwEJMDGgAXQBAEQrAxG6ffLGAAAAAElFTkSuQmCC";
+  "iVBORw0KGgoAAAANSUhEUgAAAAQAAAAECAIAAAAmkwkpAAAAEElEQVR4nGP8z4AATAxEcQAz0QEHOoQ+uAAAAABJRU5ErkJggg==";
 
 const browser = await chromium.launch({ executablePath: "/opt/pw-browsers/chromium" });
 const ctx = await browser.newContext({ acceptDownloads: true });
@@ -105,6 +105,8 @@ check("JSON has countdown data", fence.dateType === "countdown" && fence.countdo
 check("RTF has trackable heading", rtfText.includes("Fix the fence"));
 check("RTF has whiteboard text", rtfText.includes("cedar boards and nails"));
 check("RTF has embedded image (\\pict)", /\\pict\\(jpeg|png)blip/.test(rtfText));
+check("RTF image has shppict modern form", rtfText.includes("\\*\\shppict"));
+check("RTF image has WMF fallback for legacy readers", /\\nonshppict\{\\pict\\wmetafile8/.test(rtfText));
 check("RTF has connection line", rtfText.includes("Connected to: Plan vacation"));
 check("RTF has category name", rtfText.includes("Chores"));
 
