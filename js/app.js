@@ -1115,12 +1115,21 @@ $("dev-close").addEventListener("click", () => $("dev-modal").classList.add("hid
 // ============================================================
 const tsToIso = (ts) => (ts?.toDate ? ts.toDate().toISOString() : null);
 
+function downloadBlob(blob, filename) {
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
 $("export-btn").addEventListener("click", async () => {
   const btn = $("export-btn");
   btn.disabled = true;
   btn.textContent = "Exporting…";
   try {
     const uid = currentUser.uid;
+    const stamp = new Date().toISOString().slice(0, 10);
     const out = {
       app: "dunzo",
       version: 2,
@@ -1128,24 +1137,28 @@ $("export-btn").addEventListener("click", async () => {
       categories,
       trackables: [],
     };
+    const rtfEntries = []; // live objects for the human-readable export
     for (const t of trackables) {
-      const boardSnap = await getDocs(collection(db, "users", uid, "trackables", t.id, "board"));
+      const boardSnap = await getDocs(
+        query(collection(db, "users", uid, "trackables", t.id, "board"), orderBy("createdAt", "asc"))
+      );
+      const boardItems = boardSnap.docs.map((d) => d.data());
+      rtfEntries.push({ t, boardItems });
       out.trackables.push({
         ...t,
         createdAt: tsToIso(t.createdAt),
         doneAt: tsToIso(t.doneAt),
-        board: boardSnap.docs.map((d) => {
-          const item = d.data();
-          return { ...item, createdAt: tsToIso(item.createdAt) };
-        }),
+        board: boardItems.map((item) => ({ ...item, createdAt: tsToIso(item.createdAt) })),
       });
     }
-    const blob = new Blob([JSON.stringify(out, null, 1)], { type: "application/json" });
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = `dunzo-export-${new Date().toISOString().slice(0, 10)}.json`;
-    a.click();
-    URL.revokeObjectURL(a.href);
+
+    downloadBlob(
+      new Blob([JSON.stringify(out, null, 1)], { type: "application/json" }),
+      `dunzo-export-${stamp}.json`
+    );
+
+    const rtf = await buildRtf(rtfEntries);
+    downloadBlob(new Blob([rtf], { type: "application/rtf" }), `dunzo-export-${stamp}.rtf`);
   } catch (err) {
     alert("Export failed: " + err.message);
   } finally {
@@ -1153,6 +1166,113 @@ $("export-btn").addEventListener("click", async () => {
     btn.textContent = "Export data";
   }
 });
+
+// ---------- Human-readable RTF export ----------
+function rtfEscape(str) {
+  let out = "";
+  for (const ch of String(str)) {
+    if (ch === "\\" || ch === "{" || ch === "}") { out += "\\" + ch; continue; }
+    if (ch === "\n") { out += "\\line "; continue; }
+    const cp = ch.codePointAt(0);
+    if (cp < 128) { out += ch; continue; }
+    // Encode as UTF-16 units (\uN with a '?' fallback); emojis use surrogate pairs
+    for (let i = 0; i < ch.length; i++) {
+      let u = ch.charCodeAt(i);
+      if (u > 32767) u -= 65536;
+      out += `\\u${u}?`;
+    }
+  }
+  return out;
+}
+
+function dataUrlToHex(dataUrl) {
+  const bin = atob(dataUrl.slice(dataUrl.indexOf(",") + 1));
+  let hex = "";
+  for (let i = 0; i < bin.length; i++) {
+    hex += bin.charCodeAt(i).toString(16).padStart(2, "0");
+    if ((i + 1) % 64 === 0) hex += "\n";
+  }
+  return hex;
+}
+
+/** Prepare an image for RTF embedding. GIFs become PNG stills (RTF can't animate). */
+async function imageForRtf(src) {
+  const img = new Image();
+  await new Promise((res, rej) => { img.onload = res; img.onerror = rej; img.src = src; });
+  const w = img.naturalWidth, h = img.naturalHeight;
+  if (src.startsWith("data:image/jpeg")) {
+    return { blip: "jpegblip", hex: dataUrlToHex(src), w, h };
+  }
+  const canvas = document.createElement("canvas");
+  canvas.width = w;
+  canvas.height = h;
+  canvas.getContext("2d").drawImage(img, 0, 0);
+  return { blip: "pngblip", hex: dataUrlToHex(canvas.toDataURL("image/png")), w, h };
+}
+
+function hexToRtfColor(hex) {
+  const n = parseInt(hex.slice(1), 16);
+  return `\\red${(n >> 16) & 255}\\green${(n >> 8) & 255}\\blue${n & 255}`;
+}
+
+async function buildRtf(entries) {
+  // Color table: 1 = body text, 2 = muted, 3+ = category colors
+  const catColorIndex = new Map();
+  let colorTbl = ";\\red40\\green44\\blue58;\\red120\\green124\\blue138;";
+  categories.forEach((c, i) => {
+    catColorIndex.set(c.name, i + 3);
+    colorTbl += hexToRtfColor(c.color) + ";";
+  });
+
+  let body = "";
+  body += `{\\pard\\sa240\\b\\fs40 Dunzo Export \\endash  ${rtfEscape(fmtDate(new Date()))}\\par}\n`;
+
+  for (const { t, boardItems } of entries) {
+    const cat = categoryOf(t);
+    const colorIdx = cat ? catColorIndex.get(cat.name) : 1;
+    const heading = `${categoryEmoji(t)} ${t.name}${t.done ? "  — DUNZO ✅" : ""}`.trim();
+    body += `{\\pard\\sb280\\sa60\\b\\fs30\\cf${colorIdx} ${rtfEscape(heading)}\\par}\n`;
+
+    const meta = [];
+    const { text: dText } = dateLabel(t);
+    if (dText) meta.push(dText);
+    if (t.tagNames?.length) meta.push("Categories: " + t.tagNames.join(", "));
+    const created = createdAtDate(t);
+    if (created) meta.push("Created " + fmtDate(created));
+    if (meta.length) {
+      body += `{\\pard\\sa60\\fs20\\cf2 ${rtfEscape(meta.join("  ·  "))}\\par}\n`;
+    }
+
+    const related = (t.relatedIds || [])
+      .map((id) => trackables.find((x) => x.id === id)?.name)
+      .filter(Boolean);
+    if (related.length) {
+      body += `{\\pard\\sa60\\fs20\\cf2 ${rtfEscape("Connected to: " + related.join(", "))}\\par}\n`;
+    }
+
+    for (const item of boardItems) {
+      if (item.type === "text" && item.text?.trim()) {
+        body += `{\\pard\\sa120\\cf1 ${rtfEscape(item.text)}\\par}\n`;
+      } else if (item.type === "image" && item.src) {
+        try {
+          const { blip, hex, w, h } = await imageForRtf(item.src);
+          // 15 twips per pixel at 96dpi; cap width at 6in (8640 twips)
+          const scale = Math.min(1, 8640 / (w * 15));
+          const wgoal = Math.round(w * 15 * scale);
+          const hgoal = Math.round(h * 15 * scale);
+          body += `{\\pard\\sa120 {\\pict\\${blip}\\picw${w}\\pich${h}\\picwgoal${wgoal}\\pichgoal${hgoal}\n${hex}}\\par}\n`;
+        } catch {
+          body += `{\\pard\\sa120\\i\\cf2 [an image could not be embedded]\\par}\n`;
+        }
+      }
+    }
+
+    // Thin separator rule between trackables
+    body += `{\\pard\\sa120\\brdrb\\brdrs\\brdrw10\\brdrcf2 \\par}\n`;
+  }
+
+  return `{\\rtf1\\ansi\\ansicpg1252\\deff0\n{\\fonttbl{\\f0\\fswiss Helvetica;}}\n{\\colortbl${colorTbl}}\n\\f0\\fs22\\cf1\n${body}}`;
+}
 
 $("import-btn").addEventListener("click", () => $("import-file-input").click());
 
