@@ -1159,6 +1159,8 @@ $("export-btn").addEventListener("click", async () => {
 
     const rtf = await buildRtf(rtfEntries);
     downloadBlob(new Blob([rtf], { type: "application/rtf" }), `dunzo-export-${stamp}.rtf`);
+
+    downloadBlob(new Blob([buildIcs(rtfEntries)], { type: "text/calendar" }), `dunzo-export-${stamp}.ics`);
   } catch (err) {
     alert("Export failed: " + err.message);
   } finally {
@@ -1166,6 +1168,85 @@ $("export-btn").addEventListener("click", async () => {
     btn.textContent = "Export data";
   }
 });
+
+// ---------- iCalendar (.ics) export for Google Calendar ----------
+function icsEscape(s) {
+  return String(s)
+    .replace(/\\/g, "\\\\")
+    .replace(/;/g, "\\;")
+    .replace(/,/g, "\\,")
+    .replace(/\r?\n/g, "\\n");
+}
+
+function icsDate(d) {
+  return `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, "0")}${String(d.getDate()).padStart(2, "0")}`;
+}
+
+/** Fold long lines per RFC 5545 (continuation lines start with a space). */
+function icsFold(line) {
+  const out = [];
+  while (line.length > 74) {
+    out.push(line.slice(0, 74));
+    line = " " + line.slice(74);
+  }
+  out.push(line);
+  return out.join("\r\n");
+}
+
+/**
+ * Build an iCalendar file of every dated, not-yet-Dunzo trackable as an
+ * all-day event: exact dates and countdown targets on their day, goal
+ * weeks spanning Mon-Sun, goal months spanning the month. Whiteboard
+ * text goes in the description (calendar events can't hold images).
+ */
+function buildIcs(entries) {
+  const dtstamp = new Date().toISOString().replace(/[-:]/g, "").replace(/\.\d+/, "");
+  const lines = [
+    "BEGIN:VCALENDAR",
+    "VERSION:2.0",
+    "PRODID:-//Dunzo//Dunzo Export//EN",
+    "CALSCALE:GREGORIAN",
+  ];
+
+  for (const { t, boardItems } of entries) {
+    if (t.done) continue;
+    const due = effectiveDueDate(t);
+    if (!due) continue;
+
+    let start = due;
+    if (t.dateType === "goal" && t.goalKind === "week") {
+      start = isoWeekMonday(t.goalValue);
+    } else if (t.dateType === "goal" && t.goalKind === "month") {
+      const [y, m] = t.goalValue.split("-").map(Number);
+      start = new Date(y, m - 1, 1);
+    }
+    const endExclusive = new Date(due.getTime() + MS_PER_DAY);
+
+    const descParts = [];
+    if (t.tagNames?.length) descParts.push("Categories: " + t.tagNames.join(", "));
+    const related = (t.relatedIds || [])
+      .map((id) => trackables.find((x) => x.id === id)?.name)
+      .filter(Boolean);
+    if (related.length) descParts.push("Connected to: " + related.join(", "));
+    const texts = boardItems
+      .filter((i) => i.type === "text" && i.text?.trim())
+      .map((i) => i.text.trim());
+    if (texts.length) descParts.push(texts.join("\n"));
+
+    lines.push("BEGIN:VEVENT");
+    lines.push(icsFold(`UID:dunzo-${t.id}@dunzo.app`));
+    lines.push(`DTSTAMP:${dtstamp}`);
+    lines.push(`DTSTART;VALUE=DATE:${icsDate(start)}`);
+    lines.push(`DTEND;VALUE=DATE:${icsDate(endExclusive)}`);
+    lines.push(icsFold("SUMMARY:" + icsEscape(`${categoryEmoji(t)} ${t.name}`.trim())));
+    if (descParts.length) lines.push(icsFold("DESCRIPTION:" + icsEscape(descParts.join("\n\n"))));
+    if (t.tagNames?.length) lines.push(icsFold("CATEGORIES:" + t.tagNames.map(icsEscape).join(",")));
+    lines.push("END:VEVENT");
+  }
+
+  lines.push("END:VCALENDAR");
+  return lines.join("\r\n") + "\r\n";
+}
 
 // ---------- Human-readable RTF export ----------
 function rtfEscape(str) {

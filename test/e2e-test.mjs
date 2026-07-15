@@ -82,15 +82,16 @@ page.on("download", (d) => downloads.push(d));
 await page.click("#export-btn");
 await page.waitForFunction(() => document.getElementById("export-btn").textContent === "Export data");
 await page.waitForTimeout(500);
-check("two files downloaded (json + rtf)", downloads.length === 2);
+check("three files downloaded (json + rtf + ics)", downloads.length === 3);
 
-let jsonText = "", rtfText = "";
+let jsonText = "", rtfText = "", icsText = "";
 for (const d of downloads) {
   const p = path.join(SCRATCH, d.suggestedFilename());
   await d.saveAs(p);
   const content = fs.readFileSync(p, "utf8");
   if (d.suggestedFilename().endsWith(".json")) jsonText = content;
-  else rtfText = content;
+  else if (d.suggestedFilename().endsWith(".rtf")) rtfText = content;
+  else if (d.suggestedFilename().endsWith(".ics")) icsText = content;
 }
 
 const data = JSON.parse(jsonText);
@@ -109,6 +110,19 @@ check("RTF image has shppict modern form", rtfText.includes("\\*\\shppict"));
 check("RTF image has WMF fallback for legacy readers", /\\nonshppict\{\\pict\\wmetafile8/.test(rtfText));
 check("RTF has connection line", rtfText.includes("Connected to: Plan vacation"));
 check("RTF has category name", rtfText.includes("Chores"));
+
+// ---- ICS (Google Calendar) checks ----
+const target = new Date();
+target.setHours(0, 0, 0, 0);
+target.setDate(target.getDate() + 30); // countdown 30 days from today
+const ymd = `${target.getFullYear()}${String(target.getMonth() + 1).padStart(2, "0")}${String(target.getDate()).padStart(2, "0")}`;
+check("ICS is a valid VCALENDAR", icsText.startsWith("BEGIN:VCALENDAR") && icsText.trimEnd().endsWith("END:VCALENDAR"));
+check("ICS has event for countdown trackable", /SUMMARY:.*Fix the fence/.test(icsText));
+check("ICS countdown event on the right day", icsText.includes(`DTSTART;VALUE=DATE:${ymd}`));
+check("ICS has whiteboard text in description", /DESCRIPTION:[\s\S]*cedar boards/.test(icsText.replace(/\r\n /g, "")));
+check("ICS has category", icsText.replace(/\r\n /g, "").includes("CATEGORIES:Chores"));
+check("ICS excludes dateless trackable", !/SUMMARY:.*Plan vacation/.test(icsText));
+check("ICS uses CRLF line endings", icsText.includes("\r\n"));
 
 // ---- Wipe all data via dev menu ----
 await page.click("#dev-btn");
