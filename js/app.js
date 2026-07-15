@@ -103,7 +103,9 @@ function effectiveDueDate(t) {
     case "goal":
       if (t.goalKind === "day" && t.goalValue) return parseLocalDate(t.goalValue);
       if (t.goalKind === "week" && t.goalValue) {
-        return new Date(isoWeekMonday(t.goalValue).getTime() + 6 * MS_PER_DAY); // Sunday
+        // Weeks run Sunday-Saturday; the picker gives an ISO (Monday-based)
+        // week, so the week ends on the Saturday after its ISO Monday.
+        return new Date(isoWeekMonday(t.goalValue).getTime() + 5 * MS_PER_DAY); // Saturday
       }
       if (t.goalKind === "month" && t.goalValue) {
         const [y, m] = t.goalValue.split("-").map(Number);
@@ -160,8 +162,8 @@ function dateLabel(t) {
     let text;
     if (t.goalKind === "day") text = `Goal: ${fmtDate(due)}`;
     else if (t.goalKind === "week") {
-      const monday = isoWeekMonday(t.goalValue);
-      text = `Goal: week of ${fmtDate(monday)}–${fmtDate(due)}`;
+      const sunday = new Date(isoWeekMonday(t.goalValue).getTime() - MS_PER_DAY);
+      text = `Goal: week of ${fmtDate(sunday)}–${fmtDate(due)}`;
     } else {
       const [y, m] = t.goalValue.split("-").map(Number);
       text = `Goal: ${MONTHS[m - 1]} ${y}`;
@@ -305,19 +307,52 @@ function renderTagBar() {
       }));
   }
 
-  // Selecting a category no trackable uses offers to remove it
-  if (activeTagFilter && activeTagFilter !== DUNZO_TAG &&
-      !trackables.some((t) => (t.tagNames || []).includes(activeTagFilter))) {
-    const btn = document.createElement("button");
-    btn.className = "remove-cat-btn";
-    btn.textContent = `Remove category "${activeTagFilter}"`;
-    btn.addEventListener("click", async () => {
-      categories = categories.filter((c) => c.name !== activeTagFilter);
-      activeTagFilter = null;
-      await saveCategories();
-      render();
-    });
-    bar.appendChild(btn);
+  // Selecting a category that's unused — or whose trackables are all
+  // Dunzo — offers to remove it (and its completed trackables)
+  if (activeTagFilter && activeTagFilter !== DUNZO_TAG) {
+    const users = trackables.filter((t) => (t.tagNames || []).includes(activeTagFilter));
+    if (users.length === 0) {
+      const btn = document.createElement("button");
+      btn.className = "remove-cat-btn";
+      btn.textContent = `Remove category "${activeTagFilter}"`;
+      btn.addEventListener("click", async () => {
+        categories = categories.filter((c) => c.name !== activeTagFilter);
+        activeTagFilter = null;
+        await saveCategories();
+        render();
+      });
+      bar.appendChild(btn);
+    } else if (users.every((t) => t.done)) {
+      const btn = document.createElement("button");
+      btn.className = "remove-cat-btn";
+      btn.textContent = `Delete category "${activeTagFilter}" + its ${users.length} Dunzo trackable${users.length === 1 ? "" : "s"}`;
+      btn.addEventListener("click", async () => {
+        const names = users.map((t) => t.name).join(", ");
+        if (!confirm(`Delete the category "${activeTagFilter}" AND permanently delete ${users.length} completed trackable${users.length === 1 ? "" : "s"} (${names})? Their whiteboards will be gone too. This cannot be undone.`)) return;
+        for (const t of users) await deleteTrackableDeep(t);
+        categories = categories.filter((c) => c.name !== activeTagFilter);
+        activeTagFilter = null;
+        await saveCategories();
+        render();
+      });
+      bar.appendChild(btn);
+    }
+  }
+}
+
+/** Delete a trackable, its subcollections, and links from other trackables. */
+async function deleteTrackableDeep(t) {
+  const batch = writeBatch(db);
+  for (const sub of ["board", "notes"]) {
+    const snap = await getDocs(collection(trackableRef(t.id), sub));
+    snap.forEach((d) => batch.delete(d.ref));
+  }
+  batch.delete(trackableRef(t.id));
+  await batch.commit();
+  for (const other of trackables) {
+    if (other.id !== t.id && (other.relatedIds || []).includes(t.id)) {
+      updateDoc(trackableRef(other.id), { relatedIds: arrayRemove(t.id) });
+    }
   }
 }
 
@@ -714,17 +749,7 @@ $("tview-dunzo-btn").addEventListener("click", async () => {
 $("tview-delete-btn").addEventListener("click", async () => {
   const t = viewingTrackable;
   if (!confirm(`Delete "${t.name}" forever? Its whiteboard will be gone too.`)) return;
-  const boardSnap = await getDocs(collection(trackableRef(t.id), "board"));
-  const batch = writeBatch(db);
-  boardSnap.forEach((d) => batch.delete(d.ref));
-  batch.delete(trackableRef(t.id));
-  await batch.commit();
-  // Remove dangling links pointing at the deleted trackable
-  for (const other of trackables) {
-    if (other.id !== t.id && (other.relatedIds || []).includes(t.id)) {
-      updateDoc(trackableRef(other.id), { relatedIds: arrayRemove(t.id) });
-    }
-  }
+  await deleteTrackableDeep(t);
   closeTrackableView();
 });
 
@@ -1215,7 +1240,8 @@ function buildIcs(entries) {
 
     let start = due;
     if (t.dateType === "goal" && t.goalKind === "week") {
-      start = isoWeekMonday(t.goalValue);
+      // Sunday-Saturday week: starts the day before the ISO Monday
+      start = new Date(isoWeekMonday(t.goalValue).getTime() - MS_PER_DAY);
     } else if (t.dateType === "goal" && t.goalKind === "month") {
       const [y, m] = t.goalValue.split("-").map(Number);
       start = new Date(y, m - 1, 1);

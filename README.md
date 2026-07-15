@@ -6,10 +6,10 @@ A browser-based tracker for your stuff. Plain HTML/CSS/JavaScript hosted on GitH
 
 - **Sign in with Google** — each user's data is private to their account.
 - **Dark, clean list view** — narrow rows with a clickable, color-coded title and a Dunzo! button.
-- **Categories** — each has a name, an emoji (searchable picker with 300+ emojis), and a color from a palette of 24 bright, dark-background-friendly colors. Titles take their category's color; the category bar at the top filters the list.
+- **Categories** — each has a name, an emoji (searchable picker with 900+ emojis), and a color from a palette of 24 bright, dark-background-friendly colors. Titles take their category's color; the category bar at the top filters the list. Selecting a category that's unused offers to remove it; selecting one whose trackables are all Dunzo offers to delete the category together with those completed trackables.
 - **Date types** for each Trackable:
   - **Exact Due Date** — a specific day.
-  - **Goal Date** — a specific day, week, or month. For sorting, a goal week's due date is the Sunday ending that week; a goal month's is its last day.
+  - **Goal Date** — a specific day, week, or month. Weeks run Sunday–Saturday; for sorting, a goal week's due date is its Saturday, and a goal month's is its last day.
   - **Countdown** — enter a number of days (e.g. 30) and it counts down from today: "30 days left," "29 days left," … then "overdue."
   - **None** — just shows how many days it's been listed.
 - **Sorting** — by effective due date, soonest first. Dateless items sit at the bottom, oldest first. Countdown items sort by the date they're counting down to, but that date is never shown.
@@ -18,7 +18,7 @@ A browser-based tracker for your stuff. Plain HTML/CSS/JavaScript hosted on GitH
 - **Search** — by Trackable name, whiteboard text content, or both.
 - **Calendar view** — a month grid showing Trackables on their effective due dates; click one to open it.
 - **Dunzo!** — marks a Trackable complete. It disappears from the default view and gets the green **Dunzo ✅** chip; click that chip in the bar to see completed items (and un-Dunzo them if needed).
-- **Export / Import** — one click downloads three files: a `.json` backup (re-importable, restores everything including whiteboards), a human-readable `.rtf` with whiteboard text and images embedded, and a `.ics` calendar file importable into Google Calendar (Settings → Import & export → Import): every dated, not-yet-Dunzo trackable becomes an all-day event — exact dates and countdown targets on their day, goal weeks spanning Mon–Sun, goal months spanning the month — with categories, connections, and whiteboard text in the event description (calendar events can't hold images; dateless trackables are skipped). Images are written in both modern (JPEG/PNG) and legacy (WMF bitmap) RTF forms for maximum compatibility — note that macOS **TextEdit never shows images in plain RTF files** by design; open the file in Word, Pages, LibreOffice, or Google Docs to see them.
+- **Export / Import** — one click downloads three files: a `.json` backup (re-importable, restores everything including whiteboards), a human-readable `.rtf` with whiteboard text and images embedded, and a `.ics` calendar file importable into Google Calendar (Settings → Import & export → Import): every dated, not-yet-Dunzo trackable becomes an all-day event — exact dates and countdown targets on their day, goal weeks spanning Sunday–Saturday (matching Google Calendar's visual week), goal months spanning the month — with categories, connections, and whiteboard text in the event description (calendar events can't hold images; dateless trackables are skipped). Images are written in both modern (JPEG/PNG) and legacy (WMF bitmap) RTF forms for maximum compatibility — note that macOS **TextEdit never shows images in plain RTF files** by design; open the file in Word, Pages, LibreOffice, or Google Docs to see them.
 - **Developer menu** — a subtle "developer" link at the bottom opens a menu with a "Clear Firebase data" button that wipes all Dunzo data for your account (double confirmation) for a fresh start.
 
 ## One-time setup

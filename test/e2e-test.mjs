@@ -150,6 +150,20 @@ await page.waitForSelector(".board-item");
 check("restored board has text item", await page.locator(".board-item.text-item", { hasText: "cedar boards" }).count() === 1);
 check("restored board has image item", (await page.locator(".board-item.image-item img").count()) === 1);
 check("restored link chip present", (await page.locator(".related-chip").count()) === 1);
+await page.click("#tview-close-btn");
+
+// ---- All-Dunzo category: offer to delete category + its Dunzo trackables ----
+await page.click(".trackable-row:has-text('Fix the fence') .row-dunzo");
+await page.waitForFunction(() => document.querySelectorAll(".trackable-row").length === 1); // fence hidden as done
+await page.click(".tag-bar .tag-chip:has-text('Chores')");
+await page.waitForSelector(".remove-cat-btn");
+const delBtnText = await page.locator(".remove-cat-btn").textContent();
+check("all-Dunzo category offers deep delete", delBtnText.includes("Dunzo trackable"));
+await page.click(".remove-cat-btn"); // confirm auto-accepted
+await page.waitForFunction(() => !document.querySelector(".remove-cat-btn"));
+check("category chip removed", (await page.locator(".tag-bar .tag-chip", { hasText: "Chores" }).count()) === 0);
+check("its Dunzo trackable deleted too", (await page.locator(".trackable-row").count()) === 1);
+check("remaining trackable is the other one", (await page.locator(".trackable-row").textContent()).includes("Plan vacation"));
 
 console.log(failures.length ? `\n${failures.length} FAILURE(S)` : "\nALL TESTS PASSED");
 await browser.close();
