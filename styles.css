@@ -167,6 +167,11 @@ body {
 }
 .trackable-row:hover { background: var(--card-hover); }
 .trackable-row.done { opacity: 0.55; }
+/* Freaking Important: small static red glow */
+.trackable-row.important {
+  border-color: rgba(224, 85, 85, 0.7);
+  box-shadow: 0 0 7px 1px rgba(224, 85, 85, 0.55);
+}
 .row-emoji { font-size: 1.1rem; width: 1.4em; text-align: center; }
 .row-title {
   flex: 1;
@@ -339,6 +344,16 @@ body {
 
 .date-fields { margin-top: 10px; }
 .hint { color: var(--muted); font-size: 0.8rem; }
+.range-row { display: flex; align-items: center; gap: 8px; }
+.range-row input { flex: 1; }
+.range-sep { color: var(--muted); font-size: 0.85rem; }
+
+.important-toggle { flex: none; width: 100%; }
+.important-toggle.selected {
+  border-color: var(--danger);
+  background: #3a2330;
+  box-shadow: 0 0 7px 1px rgba(224, 85, 85, 0.45);
+}
 
 .modal-tag-list { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
 .modal-tag-list .tag-chip { opacity: 0.5; }

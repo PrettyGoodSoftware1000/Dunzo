@@ -49,6 +49,7 @@
       <div class="toolbar">
         <div class="view-toggle">
           <button id="view-list-btn" class="active">List</button>
+          <button id="view-imp-btn">Important</button>
           <button id="view-cal-btn">Calendar</button>
         </div>
         <button id="search-toggle-btn" class="btn btn-small">🔍 Search</button>
@@ -113,15 +114,13 @@
       </div>
 
       <div id="goal-fields" class="date-fields hidden">
-        <label class="field-label">Goal is a specific…</label>
-        <div id="goal-kind-row" class="choice-row">
-          <button class="choice-btn" data-value="day">Day</button>
-          <button class="choice-btn" data-value="week">Week</button>
-          <button class="choice-btn" data-value="month">Month</button>
+        <label class="field-label">Goal date range</label>
+        <div class="range-row">
+          <input id="goal-start" type="date" title="Start" />
+          <span class="range-sep">to</span>
+          <input id="goal-end" type="date" title="End" />
         </div>
-        <input id="goal-day" type="date" class="hidden" />
-        <input id="goal-week" type="week" class="hidden" />
-        <input id="goal-month" type="month" class="hidden" />
+        <small class="hint">Pick the same day twice for a single-day goal.</small>
       </div>
 
       <div id="countdown-fields" class="date-fields hidden">
@@ -129,6 +128,9 @@
         <input id="countdown-days" type="number" min="1" max="3650" placeholder="e.g. 30" />
         <small class="hint">Counts down starting today.</small>
       </div>
+
+      <label class="field-label">Priority</label>
+      <button id="important-btn" class="choice-btn important-toggle" type="button">🔥 Freaking Important</button>
 
       <label class="field-label">Categories</label>
       <div id="modal-tag-list" class="modal-tag-list"></div>
@@ -163,7 +165,7 @@
         <span id="tview-date" class="tview-date"></span>
         <button id="tview-link-btn" class="outline-btn" title="Link related trackables">Connect it.</button>
         <button id="tview-edit-btn" class="outline-btn" title="Edit this trackable">Edit</button>
-        <button id="tview-dunzo-btn" class="icon-btn" title="Mark Dunzo">✅</button>
+        <button id="tview-dunzo-btn" class="outline-btn" title="Mark Dunzo">Dunzo!</button>
         <button id="tview-delete-btn" class="icon-btn subtle" title="Delete this trackable">☠️</button>
         <button id="tview-close-btn" class="icon-btn tview-close" title="Close">✕</button>
       </div>

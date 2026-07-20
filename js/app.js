@@ -96,22 +96,35 @@ function daysBetween(from, to) {
   return Math.round((to - from) / MS_PER_DAY);
 }
 
+/**
+ * A goal's date range. Goals are stored as goalStart/goalEnd; older items
+ * saved under the retired day/week/month system still resolve to a range.
+ */
+function goalRange(t) {
+  if (t.goalStart && t.goalEnd) {
+    return { start: parseLocalDate(t.goalStart), end: parseLocalDate(t.goalEnd) };
+  }
+  if (t.goalKind === "day" && t.goalValue) {
+    const d = parseLocalDate(t.goalValue);
+    return { start: d, end: d };
+  }
+  if (t.goalKind === "week" && t.goalValue) {
+    const monday = isoWeekMonday(t.goalValue);
+    return { start: new Date(monday.getTime() - MS_PER_DAY), end: new Date(monday.getTime() + 5 * MS_PER_DAY) };
+  }
+  if (t.goalKind === "month" && t.goalValue) {
+    const [y, m] = t.goalValue.split("-").map(Number);
+    return { start: new Date(y, m - 1, 1), end: new Date(y, m, 0) };
+  }
+  return null;
+}
+
 function effectiveDueDate(t) {
   switch (t.dateType) {
     case "exact":
       return t.exactDate ? parseLocalDate(t.exactDate) : null;
     case "goal":
-      if (t.goalKind === "day" && t.goalValue) return parseLocalDate(t.goalValue);
-      if (t.goalKind === "week" && t.goalValue) {
-        // Weeks run Sunday-Saturday; the picker gives an ISO (Monday-based)
-        // week, so the week ends on the Saturday after its ISO Monday.
-        return new Date(isoWeekMonday(t.goalValue).getTime() + 5 * MS_PER_DAY); // Saturday
-      }
-      if (t.goalKind === "month" && t.goalValue) {
-        const [y, m] = t.goalValue.split("-").map(Number);
-        return new Date(y, m, 0); // last day of the month
-      }
-      return null;
+      return goalRange(t)?.end || null;
     case "countdown": {
       const created = createdAtDate(t);
       if (!created || !t.countdownDays) return null;
@@ -159,15 +172,11 @@ function dateLabel(t) {
   }
 
   if (t.dateType === "goal" && due) {
-    let text;
-    if (t.goalKind === "day") text = `Goal: ${fmtDate(due)}`;
-    else if (t.goalKind === "week") {
-      const sunday = new Date(isoWeekMonday(t.goalValue).getTime() - MS_PER_DAY);
-      text = `Goal: week of ${fmtDate(sunday)}–${fmtDate(due)}`;
-    } else {
-      const [y, m] = t.goalValue.split("-").map(Number);
-      text = `Goal: ${MONTHS[m - 1]} ${y}`;
-    }
+    const range = goalRange(t);
+    const oneDay = range.start.getTime() === range.end.getTime();
+    let text = oneDay
+      ? `Goal: ${fmtDate(due)}`
+      : `Goal: ${fmtDate(range.start)}–${fmtDate(due)}`;
     const diff = daysBetween(now, due);
     if (diff < 0) text += ` — ${-diff} day${diff === -1 ? "" : "s"} past`;
     return { text, overdue: diff < 0, soon: diff >= 0 && diff <= 3 };
@@ -276,15 +285,16 @@ function trackableRef(id) {
 // ============================================================
 function render() {
   renderTagBar();
-  if (viewMode === "list") {
-    $("trackable-list").classList.remove("hidden");
-    $("calendar-view").classList.add("hidden");
-    renderList();
-  } else {
+  if (viewMode === "calendar") {
     $("trackable-list").classList.add("hidden");
     $("empty-msg").classList.add("hidden");
     $("calendar-view").classList.remove("hidden");
     renderCalendar();
+  } else {
+    // "list" and "important" share the list rendering
+    $("trackable-list").classList.remove("hidden");
+    $("calendar-view").classList.add("hidden");
+    renderList();
   }
 }
 
@@ -385,6 +395,7 @@ function visibleTrackables() {
   } else {
     list = trackables.filter((t) => !t.done);
   }
+  if (viewMode === "important") list = list.filter((t) => t.important);
   list = list.filter(matchesSearch);
 
   return list.slice().sort((a, b) => {
@@ -408,7 +419,7 @@ function renderList() {
 
 function renderRow(t) {
   const row = document.createElement("div");
-  row.className = "trackable-row" + (t.done ? " done" : "");
+  row.className = "trackable-row" + (t.done ? " done" : "") + (t.important ? " important" : "");
 
   const emoji = document.createElement("span");
   emoji.className = "row-emoji";
@@ -442,6 +453,7 @@ async function setDone(t, done) {
 // Calendar view
 // ============================================================
 $("view-list-btn").addEventListener("click", () => setView("list"));
+$("view-imp-btn").addEventListener("click", () => setView("important"));
 $("view-cal-btn").addEventListener("click", () => setView("calendar"));
 $("cal-prev").addEventListener("click", () => shiftMonth(-1));
 $("cal-next").addEventListener("click", () => shiftMonth(1));
@@ -450,6 +462,7 @@ $("cal-today").addEventListener("click", () => { calMonth = null; render(); });
 function setView(mode) {
   viewMode = mode;
   $("view-list-btn").classList.toggle("active", mode === "list");
+  $("view-imp-btn").classList.toggle("active", mode === "important");
   $("view-cal-btn").classList.toggle("active", mode === "calendar");
   render();
 }
@@ -577,7 +590,7 @@ $("emoji-search").addEventListener("input", (e) => renderEmojiGrid(e.target.valu
 // ============================================================
 // Add / Edit Trackable modal
 // ============================================================
-let modalState = { dateType: "none", goalKind: "day", selectedTags: new Set() };
+let modalState = { dateType: "none", important: false, selectedTags: new Set() };
 let pickedColor = CATEGORY_COLORS[0];
 
 // Build the color palette once
@@ -601,20 +614,25 @@ let pickedColor = CATEGORY_COLORS[0];
 $("add-btn").addEventListener("click", () => openTrackableModal(null));
 $("trackable-cancel").addEventListener("click", () => $("trackable-modal").classList.add("hidden"));
 
+function toYmd(d) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
 function openTrackableModal(t) {
   editingTrackableId = t ? t.id : null;
   modalState = {
     dateType: t?.dateType || "none",
-    goalKind: t?.goalKind || "day",
+    important: !!t?.important,
     selectedTags: new Set(t?.tagNames || []),
   };
 
   $("trackable-modal-title").textContent = t ? "Edit Trackable" : "New Trackable";
   $("trackable-name").value = t?.name || "";
   $("exact-date").value = t?.dateType === "exact" ? t.exactDate || "" : "";
-  $("goal-day").value = t?.goalKind === "day" ? t.goalValue || "" : "";
-  $("goal-week").value = t?.goalKind === "week" ? t.goalValue || "" : "";
-  $("goal-month").value = t?.goalKind === "month" ? t.goalValue || "" : "";
+  // Goal range (legacy day/week/month items prefill via their computed range)
+  const range = t?.dateType === "goal" ? goalRange(t) : null;
+  $("goal-start").value = range ? toYmd(range.start) : "";
+  $("goal-end").value = range ? toYmd(range.end) : "";
   $("countdown-days").value = t?.dateType === "countdown" ? t.countdownDays || "" : "";
   $("new-tag-name").value = "";
   $("trackable-error").classList.add("hidden");
@@ -632,12 +650,11 @@ for (const btn of document.querySelectorAll("#date-type-row .choice-btn")) {
     syncDateTypeUI();
   });
 }
-for (const btn of document.querySelectorAll("#goal-kind-row .choice-btn")) {
-  btn.addEventListener("click", () => {
-    modalState.goalKind = btn.dataset.value;
-    syncDateTypeUI();
-  });
-}
+
+$("important-btn").addEventListener("click", () => {
+  modalState.important = !modalState.important;
+  syncDateTypeUI();
+});
 
 function syncDateTypeUI() {
   for (const btn of document.querySelectorAll("#date-type-row .choice-btn")) {
@@ -646,13 +663,7 @@ function syncDateTypeUI() {
   $("exact-fields").classList.toggle("hidden", modalState.dateType !== "exact");
   $("goal-fields").classList.toggle("hidden", modalState.dateType !== "goal");
   $("countdown-fields").classList.toggle("hidden", modalState.dateType !== "countdown");
-
-  for (const btn of document.querySelectorAll("#goal-kind-row .choice-btn")) {
-    btn.classList.toggle("selected", btn.dataset.value === modalState.goalKind);
-  }
-  $("goal-day").classList.toggle("hidden", modalState.goalKind !== "day");
-  $("goal-week").classList.toggle("hidden", modalState.goalKind !== "week");
-  $("goal-month").classList.toggle("hidden", modalState.goalKind !== "month");
+  $("important-btn").classList.toggle("selected", modalState.important);
 }
 
 function renderModalTags() {
@@ -697,8 +708,11 @@ $("trackable-save").addEventListener("click", async () => {
   const data = {
     name,
     dateType: modalState.dateType,
+    important: modalState.important,
     tagNames: [...modalState.selectedTags],
     exactDate: null,
+    goalStart: null,
+    goalEnd: null,
     goalKind: null,
     goalValue: null,
     countdownDays: null,
@@ -708,10 +722,12 @@ $("trackable-save").addEventListener("click", async () => {
     if (!$("exact-date").value) return showTrackableError("Pick a due date.");
     data.exactDate = $("exact-date").value;
   } else if (modalState.dateType === "goal") {
-    data.goalKind = modalState.goalKind;
-    const input = { day: "goal-day", week: "goal-week", month: "goal-month" }[modalState.goalKind];
-    if (!$(input).value) return showTrackableError("Pick a goal date.");
-    data.goalValue = $(input).value;
+    const start = $("goal-start").value;
+    const end = $("goal-end").value;
+    if (!start || !end) return showTrackableError("Pick both goal dates.");
+    if (end < start) return showTrackableError("The goal's end date is before its start date.");
+    data.goalStart = start;
+    data.goalEnd = end;
   } else if (modalState.dateType === "countdown") {
     const days = parseInt($("countdown-days").value, 10);
     if (!days || days < 1) return showTrackableError("Enter how many days to count down.");
@@ -782,6 +798,7 @@ function renderTviewHeader() {
   const dateEl = $("tview-date");
   dateEl.textContent = text;
   dateEl.className = "tview-date" + (overdue ? " overdue" : soon ? " due-soon" : "");
+  $("tview-dunzo-btn").textContent = t.done ? "Un-Dunzo" : "Dunzo!";
   $("tview-dunzo-btn").title = t.done ? "Un-Dunzo" : "Mark Dunzo";
 
   // Related chips
@@ -1239,12 +1256,8 @@ function buildIcs(entries) {
     if (!due) continue;
 
     let start = due;
-    if (t.dateType === "goal" && t.goalKind === "week") {
-      // Sunday-Saturday week: starts the day before the ISO Monday
-      start = new Date(isoWeekMonday(t.goalValue).getTime() - MS_PER_DAY);
-    } else if (t.dateType === "goal" && t.goalKind === "month") {
-      const [y, m] = t.goalValue.split("-").map(Number);
-      start = new Date(y, m - 1, 1);
+    if (t.dateType === "goal") {
+      start = goalRange(t)?.start || due;
     }
     const endExclusive = new Date(due.getTime() + MS_PER_DAY);
 
@@ -1526,7 +1539,10 @@ $("import-file-input").addEventListener("change", async (e) => {
       const ref = await addDoc(collection(db, "users", currentUser.uid, "trackables"), {
         name: t.name || "Untitled",
         dateType: t.dateType || "none",
+        important: !!t.important,
         exactDate: t.exactDate ?? null,
+        goalStart: t.goalStart ?? null,
+        goalEnd: t.goalEnd ?? null,
         goalKind: t.goalKind ?? null,
         goalValue: t.goalValue ?? null,
         countdownDays: t.countdownDays ?? null,

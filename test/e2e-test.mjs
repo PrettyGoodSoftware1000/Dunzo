@@ -44,15 +44,34 @@ await page.waitForSelector(".trackable-row");
 check("trackable created", (await page.locator(".trackable-row").count()) === 1);
 check("category chip appears", await page.locator(".tag-bar .tag-chip", { hasText: "Chores" }).count() === 1);
 
-// ---- Create trackable #2 ----
+// ---- Create trackable #2, marked Freaking Important ----
 await page.click("#add-btn");
 await page.fill("#trackable-name", "Plan vacation");
+// goal date-range inputs exist when Goal is selected
+await page.click('#date-type-row .choice-btn[data-value="goal"]');
+check("goal range inputs shown", await page.locator("#goal-start").isVisible() && await page.locator("#goal-end").isVisible());
+await page.click('#date-type-row .choice-btn[data-value="none"]');
+await page.click("#important-btn");
+check("important toggle selects", await page.locator("#important-btn.selected").count() === 1);
 await page.click("#trackable-save");
+await page.waitForFunction(() => document.querySelectorAll(".trackable-row").length === 2);
+check("important row has glow class", (await page.locator(".trackable-row.important:has-text('Plan vacation')").count()) === 1);
+
+// ---- Important tab: only important items; category filter intersects ----
+await page.click("#view-imp-btn");
+await page.waitForFunction(() => document.querySelectorAll(".trackable-row").length === 1);
+check("Important tab shows only important trackable", (await page.locator(".trackable-row").textContent()).includes("Plan vacation"));
+await page.click(".tag-bar .tag-chip:has-text('Chores')"); // fence's category, but fence isn't important
+await page.waitForFunction(() => document.querySelectorAll(".trackable-row").length === 0);
+check("category filter intersects with important", true);
+await page.click(".tag-bar .tag-chip:has-text('Chores')"); // clear filter
+await page.click("#view-list-btn");
 await page.waitForFunction(() => document.querySelectorAll(".trackable-row").length === 2);
 
 // ---- Open trackable view, add whiteboard text + image ----
-await page.click(".trackable-row >> nth=0 >> .row-title");
+await page.click(".trackable-row:has-text('Fix the fence') .row-title");
 await page.waitForSelector("#tview-overlay:not(.hidden)");
+check("tview Dunzo button is text", (await page.locator("#tview-dunzo-btn").textContent()) === "Dunzo!");
 await page.click("#board-add-text");
 await page.waitForSelector(".board-item.text-item .item-body");
 await page.click(".board-item.text-item .item-body");
@@ -138,6 +157,7 @@ await page.setInputFiles("#import-file-input", path.join(SCRATCH, downloads.find
 await page.waitForFunction(() => document.querySelectorAll(".trackable-row").length === 2, { timeout: 5000 });
 check("import restored both trackables", true);
 check("import restored category chip", await page.locator(".tag-bar .tag-chip", { hasText: "Chores" }).count() === 1);
+check("import restored important flag", (await page.locator(".trackable-row.important:has-text('Plan vacation')").count()) === 1);
 
 // Countdown restored: row shows "days left"
 const rowDates = await page.locator(".row-date").allTextContents();
