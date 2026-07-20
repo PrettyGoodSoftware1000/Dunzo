@@ -482,6 +482,15 @@ body {
   white-space: nowrap;
 }
 .outline-btn:hover { background: var(--success); color: #fff; }
+
+/* Important toggle in the trackable view */
+.outline-important { border-color: var(--danger); color: var(--danger); }
+.outline-important:hover { background: var(--danger); color: #fff; }
+.outline-important.active {
+  background: var(--danger);
+  color: #fff;
+  box-shadow: 0 0 7px 1px rgba(224, 85, 85, 0.55);
+}
 .tview-close { font-size: 1.3rem !important; }
 
 .tview-related { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 16px 0; }
@@ -582,6 +591,8 @@ body {
   outline: none;
 }
 .board-item.text-item .item-body:focus { border-color: var(--primary); }
+.board-item.text-item .item-body a { color: #6fb3ff; text-decoration: underline; }
+.board-item.text-item .item-body a:hover { color: #9cc9ff; }
 .board-item.image-item img {
   width: 100%;
   height: 100%;

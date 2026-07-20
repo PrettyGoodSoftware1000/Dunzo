@@ -758,6 +758,13 @@ $("trackable-save").addEventListener("click", async () => {
 // ============================================================
 $("tview-close-btn").addEventListener("click", closeTrackableView);
 $("tview-edit-btn").addEventListener("click", () => openTrackableModal(viewingTrackable));
+$("tview-important-btn").addEventListener("click", async () => {
+  const t = viewingTrackable;
+  const val = !t.important;
+  await updateDoc(trackableRef(t.id), { important: val });
+  t.important = val;
+  renderTviewHeader();
+});
 $("tview-dunzo-btn").addEventListener("click", async () => {
   await setDone(viewingTrackable, !viewingTrackable.done);
   closeTrackableView();
@@ -800,6 +807,7 @@ function renderTviewHeader() {
   dateEl.className = "tview-date" + (overdue ? " overdue" : soon ? " due-soon" : "");
   $("tview-dunzo-btn").textContent = t.done ? "Un-Dunzo" : "Dunzo!";
   $("tview-dunzo-btn").title = t.done ? "Un-Dunzo" : "Mark Dunzo";
+  $("tview-important-btn").classList.toggle("active", !!t.important);
 
   // Related chips
   const rel = $("tview-related");
@@ -817,6 +825,33 @@ function renderTviewHeader() {
 }
 
 // ---------- Board rendering + interaction ----------
+const _htmlEscape = (s) => s.replace(/[&<>"]/g, (c) =>
+  ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+/**
+ * Escape text and turn URLs (http/https and bare www.) into clickable
+ * anchors. Trailing sentence punctuation is left outside the link.
+ */
+function linkifyHtml(text) {
+  const urlRe = /(https?:\/\/[^\s<]+|www\.[^\s<]+)/gi;
+  let out = "";
+  let last = 0;
+  let m;
+  while ((m = urlRe.exec(text)) !== null) {
+    out += _htmlEscape(text.slice(last, m.index));
+    let url = m[0];
+    let trailing = "";
+    const trail = url.match(/[)\].,;:!?'"]+$/);
+    if (trail) { trailing = trail[0]; url = url.slice(0, -trailing.length); }
+    const href = url.startsWith("www.") ? "https://" + url : url;
+    out += `<a href="${_htmlEscape(href)}" target="_blank" rel="noopener noreferrer">${_htmlEscape(url)}</a>`;
+    out += _htmlEscape(trailing);
+    last = m.index + m[0].length;
+  }
+  out += _htmlEscape(text.slice(last));
+  return out.replace(/\n/g, "<br>");
+}
+
 function boardItemRef(itemId) {
   return doc(db, "users", currentUser.uid, "trackables", viewingTrackable.id, "board", itemId);
 }
@@ -861,7 +896,13 @@ function renderBoardItem(item) {
     const body = document.createElement("div");
     body.className = "item-body";
     body.contentEditable = "true";
-    body.textContent = item.text || "";
+    let editing = false;
+    // Show plain text while editing (easy caret handling); show linkified
+    // HTML with clickable anchors when not focused.
+    const showLinked = () => { body.innerHTML = linkifyHtml(item.text || ""); };
+    showLinked();
+    body.addEventListener("focus", () => { editing = true; body.textContent = item.text || ""; });
+    body.addEventListener("blur", () => { editing = false; showLinked(); });
     let saveTimer = null;
     body.addEventListener("input", () => {
       item.text = body.innerText;
@@ -870,6 +911,14 @@ function renderBoardItem(item) {
         updateDoc(boardItemRef(item.id), { text: item.text });
         syncContentText();
       }, 700);
+    });
+    // Open a link on click when not editing (and stop it from focusing)
+    body.addEventListener("mousedown", (e) => {
+      const a = e.target.closest("a");
+      if (a && !editing) {
+        e.preventDefault();
+        window.open(a.href, "_blank", "noopener,noreferrer");
+      }
     });
     el.appendChild(body);
   } else {

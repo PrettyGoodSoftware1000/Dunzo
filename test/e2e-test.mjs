@@ -72,11 +72,26 @@ await page.waitForFunction(() => document.querySelectorAll(".trackable-row").len
 await page.click(".trackable-row:has-text('Fix the fence') .row-title");
 await page.waitForSelector("#tview-overlay:not(.hidden)");
 check("tview Dunzo button is text", (await page.locator("#tview-dunzo-btn").textContent()) === "Dunzo!");
+check("tview Connect button renamed", (await page.locator("#tview-link-btn").textContent()) === "Connect");
+
+// Mark important from the trackable view
+check("tview important not active initially", (await page.locator("#tview-important-btn.active").count()) === 0);
+await page.click("#tview-important-btn");
+await page.waitForSelector("#tview-important-btn.active");
+check("tview important toggles active", true);
+
 await page.click("#board-add-text");
 await page.waitForSelector(".board-item.text-item .item-body");
 await page.click(".board-item.text-item .item-body");
-await page.keyboard.type("Buy cedar boards and nails");
+await page.keyboard.type("Buy cedar boards and nails. See https://example.com and www.dunzo.test");
 await page.waitForTimeout(1000); // let the debounced save fire
+// Blur to render the linkified view
+await page.click("#tview-title");
+await page.waitForSelector(".board-item.text-item .item-body a");
+const anchors = await page.locator(".board-item.text-item .item-body a").count();
+check("whiteboard text links are clickable anchors", anchors === 2);
+const hrefs = await page.locator(".board-item.text-item .item-body a").evaluateAll((els) => els.map((a) => a.href));
+check("bare www link gets https href", hrefs.some((h) => h === "https://www.dunzo.test/"));
 
 await page.setInputFiles("#board-image-input", {
   name: "photo.png",

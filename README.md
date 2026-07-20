@@ -14,7 +14,9 @@ A browser-based tracker for your stuff. Plain HTML/CSS/JavaScript hosted on GitH
   - **None** — just shows how many days it's been listed.
 - **Sorting** — by effective due date, soonest first. Dateless items sit at the bottom, oldest first. Countdown items sort by the date they're counting down to, but that date is never shown.
 - **Trackable view** — click a title to open a large whiteboard for that Trackable. Add draggable, resizable text boxes and images (JPEG, PNG, or auto-playing GIFs — drag & drop them anywhere on the board). Images are compressed in your browser and stored inside the database, so everything stays on Firebase's free tier — no credit card needed. GIFs must be under ~350 KB (they can't be recompressed without losing animation). Edit, Dunzo, a subtle delete, and an X to close all live in the header.
-- **🔗 Linking** — relate Trackables to each other; linked items show as clickable chips for quick navigation.
+- **🔗 Linking** — the **Connect** button relates Trackables to each other; linked items show as clickable chips for quick navigation.
+- **Whiteboard links** — URLs typed into whiteboard text boxes (http/https or bare `www.`) become clickable links that open in a new tab.
+- The trackable view header also has a **🔥 Important** toggle for flagging the item without opening the editor.
 - **Freaking Important** — flag a Trackable when creating or editing it; flagged rows get a small static red glow, and the **Important** tab (between List and Calendar) lists only flagged items — category chips filter within it.
 - **Search** — by Trackable name, whiteboard text content, or both.
 - **Calendar view** — a month grid showing Trackables on their effective due dates; click one to open it.
