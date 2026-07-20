@@ -483,12 +483,14 @@ body {
 }
 .outline-btn:hover { background: var(--success); color: #fff; }
 
-/* Important toggle in the trackable view */
-.outline-important { border-color: var(--danger); color: var(--danger); }
-.outline-important:hover { background: var(--danger); color: #fff; }
+/* Important toggle in the trackable view — muted red outline, solid on hover.
+   Matches the shape/size of the Connect and Edit outline buttons. */
+.outline-important { border-color: #9c5555; color: #c07575; }
+.outline-important:hover { background: var(--danger); color: #fff; border-color: var(--danger); }
 .outline-important.active {
   background: var(--danger);
   color: #fff;
+  border-color: var(--danger);
   box-shadow: 0 0 7px 1px rgba(224, 85, 85, 0.55);
 }
 .tview-close { font-size: 1.3rem !important; }
