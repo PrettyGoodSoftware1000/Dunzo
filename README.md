@@ -102,11 +102,36 @@ then visit `http://localhost:8000`.
 
 Everything runs on Firebase's free **Spark** plan: Firestore allows ~1 GiB of storage and tens of thousands of reads/writes per day, far beyond what a personal tracker uses. No credit card is required. (Note images live inside Firestore, deliberately avoiding Firebase Cloud Storage, which now requires a card.)
 
+## Security & privacy
+
+Dunzo's data protection rests on **two layers**: Firebase Authentication (Google sign-in) proves *who* you are, and **Firestore Security Rules** enforce *what* you can touch. The rules are the real lock, and they run on Google's servers — they can't be bypassed by editing the page, using dev tools, or crafting a custom request. Every user's data lives under `/users/<their-uid>/`, and the rule from setup step 3 only allows access when the signed-in account's ID matches that path:
+
+```
+allow read, write: if request.auth != null && request.auth.uid == userId;
+```
+
+**What this means:**
+
+- **No one else can see your data** — not other Dunzo users, not the public. There is no shared or public data in Dunzo; every path is owner-scoped.
+- **One Google account cannot access another's data.** Each account has a distinct, permanent Firebase user ID; the rule compares it to the data's owner, and a mismatch is denied by the server.
+- **The public code and config are not a leak.** Anyone can load the Dunzo page and the `firebaseConfig` values are public by design — those only identify the project and grant no access on their own. Your security comes from the rules and sign-in, not from hiding the config. After signing in, each person sees only their own data.
+
+**Residual risks to be aware of** (these are about account/project hygiene, not flaws in how Dunzo gates data):
+
+1. **A compromised Google account.** Dunzo trusts Google's sign-in, so anyone who gets into your Google account gets into your Dunzo data. **Turn on 2-factor authentication** for the Google account(s) you use — this is the single biggest protection.
+2. **Loosened Firestore rules.** If the rules are ever republished in an open "test mode" (e.g. `allow read, write: if true;`), your data becomes public. Keep the rules exactly as documented, and periodically confirm the live rules (Firestore → Rules) still match this README and aren't in a temporary open-test state.
+3. **An unlocked, signed-in device.** Firebase keeps you logged in, so anyone at an already-signed-in browser can see that account's data. Use the **Sign out** button on shared devices and lock your screen.
+4. **Leaked project admin credentials.** A Firebase *service-account key* (very different from the public `firebaseConfig`) bypasses the rules entirely — never commit one to the repo, and keep the Firebase project owned by an account you control.
+
+**Export files** (`.json`, `.rtf`, `.ics`) contain your data in plaintext and are unencrypted. They're only created when you click Export, but treat the downloaded files like any sensitive document.
+
 ## Project layout
 
 ```
-index.html            The whole UI (sign-in, list, modals)
+index.html            The whole UI (sign-in, list, modals, whiteboard)
 styles.css            Styling
-js/firebase-config.js Your Firebase project keys (fill this in)
-js/app.js             All app logic (auth, Firestore, rendering, images)
+js/firebase-config.js Your Firebase project keys (fill this in; safe to commit)
+js/app.js             All app logic (auth, Firestore, rendering, images, export)
+js/emoji-data.js      Searchable emoji library
+test/                 Headless end-to-end test (export/wipe/import cycle)
 ```
