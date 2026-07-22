@@ -119,6 +119,96 @@ function goalRange(t) {
   return null;
 }
 
+const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+const NTH_WORDS = { 1: "First", 2: "Second", 3: "Third", 4: "Fourth", "-1": "Last" };
+const BYDAY = ["SU", "MO", "TU", "WE", "TH", "FR", "SA"];
+
+function addDays(d, n) {
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate() + n);
+}
+
+function daysInMonth(year, month0) {
+  return new Date(year, month0 + 1, 0).getDate();
+}
+
+/** The nth (1-4, or -1 for last) `weekday` of a month, or null if it doesn't exist. */
+function nthWeekdayOfMonth(year, month0, nth, weekday) {
+  if (nth === -1) {
+    const last = new Date(year, month0, daysInMonth(year, month0));
+    return addDays(last, -(((last.getDay() - weekday) + 7) % 7));
+  }
+  const first = new Date(year, month0, 1);
+  const offset = (weekday - first.getDay() + 7) % 7;
+  const day = 1 + offset + (nth - 1) * 7;
+  return day <= daysInMonth(year, month0) ? new Date(year, month0, day) : null;
+}
+
+/** The first occurrence of a recurring trackable on or after `from`. */
+function nextOccurrence(t, from) {
+  from = from || today();
+  if (t.recurKind === "weekly") {
+    const weekday = t.recurWeekday ?? 1;
+    const interval = Math.max(1, t.recurInterval || 1);
+    const anchorRaw = t.recurStart ? parseLocalDate(t.recurStart) : (createdAtDate(t) || today());
+    // Normalize the anchor onto its first matching weekday, then keep phase.
+    const anchor = addDays(anchorRaw, (weekday - anchorRaw.getDay() + 7) % 7);
+    let d = addDays(from, (weekday - from.getDay() + 7) % 7);
+    if (d < anchor) d = anchor;
+    const weeks = Math.round((d - anchor) / (7 * MS_PER_DAY));
+    const phase = ((weeks % interval) + interval) % interval;
+    if (phase !== 0) d = addDays(d, (interval - phase) * 7);
+    return d;
+  }
+  if (t.recurKind === "monthlyNth") {
+    const nth = t.recurNth ?? 1;
+    const weekday = t.recurWeekday ?? 3;
+    for (let i = 0; i < 24; i++) {
+      const base = new Date(from.getFullYear(), from.getMonth() + i, 1);
+      const d = nthWeekdayOfMonth(base.getFullYear(), base.getMonth(), nth, weekday);
+      if (d && d >= from) return d;
+    }
+    return null;
+  }
+  if (t.recurKind === "yearly") {
+    const month0 = (t.recurMonth ?? 1) - 1;
+    for (let y = from.getFullYear(); y <= from.getFullYear() + 1; y++) {
+      const day = Math.min(t.recurDay ?? 1, daysInMonth(y, month0));
+      const d = new Date(y, month0, day);
+      if (d >= from) return d;
+    }
+    return null;
+  }
+  return null;
+}
+
+/** All occurrences of a recurring trackable within [start, end] (inclusive). */
+function occurrencesInRange(t, start, end) {
+  const out = [];
+  let d = nextOccurrence(t, start);
+  let guard = 0;
+  while (d && d <= end && guard++ < 400) {
+    out.push(d);
+    d = nextOccurrence(t, addDays(d, 1));
+  }
+  return out;
+}
+
+/** Human description of a recurrence, e.g. "Every other Tuesday". */
+function describeRecurrence(t) {
+  if (t.recurKind === "weekly") {
+    const interval = Math.max(1, t.recurInterval || 1);
+    const word = interval === 1 ? "Every" : interval === 2 ? "Every other" : `Every ${interval}th`;
+    return `${word} ${WEEKDAYS[t.recurWeekday ?? 1]}`;
+  }
+  if (t.recurKind === "monthlyNth") {
+    return `${NTH_WORDS[t.recurNth ?? 1]} ${WEEKDAYS[t.recurWeekday ?? 3]} of the month`;
+  }
+  if (t.recurKind === "yearly") {
+    return `Every ${MONTHS[(t.recurMonth ?? 1) - 1]} ${t.recurDay ?? 1}`;
+  }
+  return "Repeats";
+}
+
 function effectiveDueDate(t) {
   switch (t.dateType) {
     case "exact":
@@ -130,6 +220,8 @@ function effectiveDueDate(t) {
       if (!created || !t.countdownDays) return null;
       return new Date(created.getTime() + t.countdownDays * MS_PER_DAY);
     }
+    case "recurring":
+      return nextOccurrence(t, today());
     default:
       return null;
   }
@@ -180,6 +272,12 @@ function dateLabel(t) {
     const diff = daysBetween(now, due);
     if (diff < 0) text += ` — ${-diff} day${diff === -1 ? "" : "s"} past`;
     return { text, overdue: diff < 0, soon: diff >= 0 && diff <= 3 };
+  }
+
+  if (t.dateType === "recurring" && due) {
+    const diff = daysBetween(now, due);
+    const when = diff === 0 ? "today" : diff === 1 ? "tomorrow" : fmtDate(due);
+    return { text: `${describeRecurrence(t)} · next ${when}`, overdue: false, soon: diff >= 0 && diff <= 3 };
   }
 
   const created = createdAtDate(t);
@@ -486,20 +584,28 @@ function renderCalendar() {
     grid.appendChild(el);
   }
 
-  // Bucket visible (non-done, search/filter-matching) trackables by due date
-  const byDay = new Map();
-  for (const t of visibleTrackables()) {
-    if (t.done) continue;
-    const due = effectiveDueDate(t);
-    if (!due) continue;
-    const key = `${due.getFullYear()}-${due.getMonth()}-${due.getDate()}`;
-    if (!byDay.has(key)) byDay.set(key, []);
-    byDay.get(key).push(t);
-  }
-
   const firstDow = base.getDay();
   const start = new Date(base.getFullYear(), base.getMonth(), 1 - firstDow);
+  const gridEnd = new Date(start.getFullYear(), start.getMonth(), start.getDate() + 41);
   const now = today();
+
+  // Bucket visible (non-done, search/filter-matching) trackables by day.
+  // Recurring items are placed on every occurrence inside the visible grid.
+  const byDay = new Map();
+  const addToDay = (d, t) => {
+    const key = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+    if (!byDay.has(key)) byDay.set(key, []);
+    byDay.get(key).push(t);
+  };
+  for (const t of visibleTrackables()) {
+    if (t.done) continue;
+    if (t.dateType === "recurring") {
+      for (const d of occurrencesInRange(t, start, gridEnd)) addToDay(d, t);
+    } else {
+      const due = effectiveDueDate(t);
+      if (due) addToDay(due, t);
+    }
+  }
 
   for (let i = 0; i < 42; i++) {
     const day = new Date(start.getFullYear(), start.getMonth(), start.getDate() + i);
@@ -618,10 +724,22 @@ function toYmd(d) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
+// Populate the weekday dropdowns (Sun–Sat) once
+for (const selId of ["recur-weekday", "recur-monthweekday"]) {
+  const sel = $(selId);
+  WEEKDAYS.forEach((name, i) => {
+    const opt = document.createElement("option");
+    opt.value = i;
+    opt.textContent = name;
+    sel.appendChild(opt);
+  });
+}
+
 function openTrackableModal(t) {
   editingTrackableId = t ? t.id : null;
   modalState = {
     dateType: t?.dateType || "none",
+    recurKind: t?.recurKind || "weekly",
     important: !!t?.important,
     selectedTags: new Set(t?.tagNames || []),
   };
@@ -634,6 +752,18 @@ function openTrackableModal(t) {
   $("goal-start").value = range ? toYmd(range.start) : "";
   $("goal-end").value = range ? toYmd(range.end) : "";
   $("countdown-days").value = t?.dateType === "countdown" ? t.countdownDays || "" : "";
+
+  // Recurring fields
+  const rec = t?.dateType === "recurring" ? t : null;
+  $("recur-interval").value = String(rec?.recurInterval || 1);
+  $("recur-weekday").value = String(rec?.recurWeekday ?? 2); // default Tuesday
+  $("recur-start").value = rec?.recurStart || toYmd(today());
+  $("recur-nth").value = String(rec?.recurNth ?? 1);
+  $("recur-monthweekday").value = String(rec?.recurWeekday ?? 3); // default Wednesday
+  $("recur-date").value = rec?.recurMonth
+    ? `${today().getFullYear()}-${String(rec.recurMonth).padStart(2, "0")}-${String(rec.recurDay).padStart(2, "0")}`
+    : "";
+
   $("new-tag-name").value = "";
   $("trackable-error").classList.add("hidden");
   $("cat-emoji-picker").classList.add("hidden");
@@ -650,6 +780,12 @@ for (const btn of document.querySelectorAll("#date-type-row .choice-btn")) {
     syncDateTypeUI();
   });
 }
+for (const btn of document.querySelectorAll("#recur-kind-row .choice-btn")) {
+  btn.addEventListener("click", () => {
+    modalState.recurKind = btn.dataset.value;
+    syncDateTypeUI();
+  });
+}
 
 $("important-btn").addEventListener("click", () => {
   modalState.important = !modalState.important;
@@ -663,6 +799,13 @@ function syncDateTypeUI() {
   $("exact-fields").classList.toggle("hidden", modalState.dateType !== "exact");
   $("goal-fields").classList.toggle("hidden", modalState.dateType !== "goal");
   $("countdown-fields").classList.toggle("hidden", modalState.dateType !== "countdown");
+  $("recurring-fields").classList.toggle("hidden", modalState.dateType !== "recurring");
+  for (const btn of document.querySelectorAll("#recur-kind-row .choice-btn")) {
+    btn.classList.toggle("selected", btn.dataset.value === modalState.recurKind);
+  }
+  $("recur-weekly").classList.toggle("hidden", modalState.recurKind !== "weekly");
+  $("recur-monthly").classList.toggle("hidden", modalState.recurKind !== "monthlyNth");
+  $("recur-yearly").classList.toggle("hidden", modalState.recurKind !== "yearly");
   $("important-btn").classList.toggle("selected", modalState.important);
 }
 
@@ -716,6 +859,13 @@ $("trackable-save").addEventListener("click", async () => {
     goalKind: null,
     goalValue: null,
     countdownDays: null,
+    recurKind: null,
+    recurWeekday: null,
+    recurInterval: null,
+    recurStart: null,
+    recurNth: null,
+    recurMonth: null,
+    recurDay: null,
   };
 
   if (modalState.dateType === "exact") {
@@ -732,6 +882,22 @@ $("trackable-save").addEventListener("click", async () => {
     const days = parseInt($("countdown-days").value, 10);
     if (!days || days < 1) return showTrackableError("Enter how many days to count down.");
     data.countdownDays = days;
+  } else if (modalState.dateType === "recurring") {
+    data.recurKind = modalState.recurKind;
+    if (modalState.recurKind === "weekly") {
+      if (!$("recur-start").value) return showTrackableError("Pick a start date for the weekly repeat.");
+      data.recurWeekday = parseInt($("recur-weekday").value, 10);
+      data.recurInterval = parseInt($("recur-interval").value, 10);
+      data.recurStart = $("recur-start").value;
+    } else if (modalState.recurKind === "monthlyNth") {
+      data.recurNth = parseInt($("recur-nth").value, 10);
+      data.recurWeekday = parseInt($("recur-monthweekday").value, 10);
+    } else if (modalState.recurKind === "yearly") {
+      if (!$("recur-date").value) return showTrackableError("Pick the yearly date.");
+      const d = parseLocalDate($("recur-date").value);
+      data.recurMonth = d.getMonth() + 1;
+      data.recurDay = d.getDate();
+    }
   }
 
   if (editingTrackableId) {
@@ -1301,16 +1467,30 @@ function buildIcs(entries) {
 
   for (const { t, boardItems } of entries) {
     if (t.done) continue;
-    const due = effectiveDueDate(t);
-    if (!due) continue;
 
-    let start = due;
-    if (t.dateType === "goal") {
-      start = goalRange(t)?.start || due;
+    // A recurring trackable becomes one VEVENT with an RRULE; others are
+    // a single all-day event on their (range or due) date.
+    let start, endExclusive, rrule = null;
+    if (t.dateType === "recurring") {
+      start = nextOccurrence(t, createdAtDate(t) || today());
+      if (!start) continue;
+      endExclusive = addDays(start, 1);
+      if (t.recurKind === "weekly") {
+        rrule = `FREQ=WEEKLY;INTERVAL=${Math.max(1, t.recurInterval || 1)};BYDAY=${BYDAY[t.recurWeekday ?? 1]}`;
+      } else if (t.recurKind === "monthlyNth") {
+        rrule = `FREQ=MONTHLY;BYDAY=${t.recurNth ?? 1}${BYDAY[t.recurWeekday ?? 3]}`;
+      } else if (t.recurKind === "yearly") {
+        rrule = `FREQ=YEARLY;BYMONTH=${t.recurMonth ?? 1};BYMONTHDAY=${t.recurDay ?? 1}`;
+      }
+    } else {
+      const due = effectiveDueDate(t);
+      if (!due) continue;
+      start = t.dateType === "goal" ? (goalRange(t)?.start || due) : due;
+      endExclusive = new Date(due.getTime() + MS_PER_DAY);
     }
-    const endExclusive = new Date(due.getTime() + MS_PER_DAY);
 
     const descParts = [];
+    if (t.dateType === "recurring") descParts.push(describeRecurrence(t));
     if (t.tagNames?.length) descParts.push("Categories: " + t.tagNames.join(", "));
     const related = (t.relatedIds || [])
       .map((id) => trackables.find((x) => x.id === id)?.name)
@@ -1326,6 +1506,7 @@ function buildIcs(entries) {
     lines.push(`DTSTAMP:${dtstamp}`);
     lines.push(`DTSTART;VALUE=DATE:${icsDate(start)}`);
     lines.push(`DTEND;VALUE=DATE:${icsDate(endExclusive)}`);
+    if (rrule) lines.push(`RRULE:${rrule}`);
     lines.push(icsFold("SUMMARY:" + icsEscape(`${categoryEmoji(t)} ${t.name}`.trim())));
     if (descParts.length) lines.push(icsFold("DESCRIPTION:" + icsEscape(descParts.join("\n\n"))));
     if (t.tagNames?.length) lines.push(icsFold("CATEGORIES:" + t.tagNames.map(icsEscape).join(",")));
@@ -1595,6 +1776,13 @@ $("import-file-input").addEventListener("change", async (e) => {
         goalKind: t.goalKind ?? null,
         goalValue: t.goalValue ?? null,
         countdownDays: t.countdownDays ?? null,
+        recurKind: t.recurKind ?? null,
+        recurWeekday: t.recurWeekday ?? null,
+        recurInterval: t.recurInterval ?? null,
+        recurStart: t.recurStart ?? null,
+        recurNth: t.recurNth ?? null,
+        recurMonth: t.recurMonth ?? null,
+        recurDay: t.recurDay ?? null,
         tagNames: t.tagNames || [],
         done: !!t.done,
         doneAt: t.doneAt ? new Date(t.doneAt) : null,

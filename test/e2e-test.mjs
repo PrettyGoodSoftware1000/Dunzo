@@ -68,6 +68,19 @@ await page.click(".tag-bar .tag-chip:has-text('Chores')"); // clear filter
 await page.click("#view-list-btn");
 await page.waitForFunction(() => document.querySelectorAll(".trackable-row").length === 2);
 
+// ---- Create trackable #3: recurring (every October 8th) ----
+await page.click("#add-btn");
+await page.fill("#trackable-name", "Anniversary");
+await page.click('#date-type-row .choice-btn[data-value="recurring"]');
+check("recurring fields shown", await page.locator("#recurring-fields").isVisible());
+await page.click('#recur-kind-row .choice-btn[data-value="yearly"]');
+check("yearly sub shown", await page.locator("#recur-yearly").isVisible());
+await page.fill("#recur-date", "2020-10-08");
+await page.click("#trackable-save");
+await page.waitForFunction(() => document.querySelectorAll(".trackable-row").length === 3);
+check("recurring row shows description",
+  (await page.locator(".trackable-row:has-text('Anniversary') .row-date").textContent()).includes("Every October 8"));
+
 // ---- Open trackable view, add whiteboard text + image ----
 await page.click(".trackable-row:has-text('Fix the fence') .row-title");
 await page.waitForSelector("#tview-overlay:not(.hidden)");
@@ -130,7 +143,7 @@ for (const d of downloads) {
 
 const data = JSON.parse(jsonText);
 const fence = data.trackables.find((t) => t.name === "Fix the fence");
-check("JSON has both trackables", data.trackables.length === 2);
+check("JSON has all three trackables", data.trackables.length === 3);
 check("JSON has category with color+emoji", data.categories.some((c) => c.name === "Chores" && c.color && "emoji" in c));
 check("JSON board has text item with content", fence.board.some((i) => i.type === "text" && i.text.includes("cedar boards")));
 check("JSON board has image with data URL", fence.board.some((i) => i.type === "image" && i.src.startsWith("data:image/")));
@@ -157,6 +170,9 @@ check("ICS has whiteboard text in description", /DESCRIPTION:[\s\S]*cedar boards
 check("ICS has category", icsText.replace(/\r\n /g, "").includes("CATEGORIES:Chores"));
 check("ICS excludes dateless trackable", !/SUMMARY:.*Plan vacation/.test(icsText));
 check("ICS uses CRLF line endings", icsText.includes("\r\n"));
+check("ICS has RRULE for recurring", icsText.includes("RRULE:FREQ=YEARLY;BYMONTH=10;BYMONTHDAY=8"));
+check("ICS recurring event has Anniversary summary", /SUMMARY:.*Anniversary/.test(icsText));
+check("JSON has recurring trackable", data.trackables.some((t) => t.dateType === "recurring" && t.recurKind === "yearly" && t.recurMonth === 10 && t.recurDay === 8));
 
 // ---- Wipe all data via dev menu ----
 await page.click("#dev-btn");
@@ -169,10 +185,11 @@ check("wipe removed category chips", (await page.locator(".tag-bar .tag-chip").c
 
 // ---- Re-import the JSON ----
 await page.setInputFiles("#import-file-input", path.join(SCRATCH, downloads.find(d => d.suggestedFilename().endsWith(".json")).suggestedFilename()));
-await page.waitForFunction(() => document.querySelectorAll(".trackable-row").length === 2, { timeout: 5000 });
-check("import restored both trackables", true);
+await page.waitForFunction(() => document.querySelectorAll(".trackable-row").length === 3, { timeout: 5000 });
+check("import restored all trackables", true);
 check("import restored category chip", await page.locator(".tag-bar .tag-chip", { hasText: "Chores" }).count() === 1);
 check("import restored important flag", (await page.locator(".trackable-row.important:has-text('Plan vacation')").count()) === 1);
+check("import restored recurring trackable", (await page.locator(".trackable-row:has-text('Anniversary') .row-date").textContent()).includes("Every October 8"));
 
 // Countdown restored: row shows "days left"
 const rowDates = await page.locator(".row-date").allTextContents();
@@ -189,7 +206,7 @@ await page.click("#tview-close-btn");
 
 // ---- All-Dunzo category: offer to delete category + its Dunzo trackables ----
 await page.click(".trackable-row:has-text('Fix the fence') .row-dunzo");
-await page.waitForFunction(() => document.querySelectorAll(".trackable-row").length === 1); // fence hidden as done
+await page.waitForFunction(() => document.querySelectorAll(".trackable-row").length === 2); // fence hidden as done
 await page.click(".tag-bar .tag-chip:has-text('Chores')");
 await page.waitForSelector(".remove-cat-btn");
 const delBtnText = await page.locator(".remove-cat-btn").textContent();
@@ -197,8 +214,10 @@ check("all-Dunzo category offers deep delete", delBtnText.includes("Dunzo tracka
 await page.click(".remove-cat-btn"); // confirm auto-accepted
 await page.waitForFunction(() => !document.querySelector(".remove-cat-btn"));
 check("category chip removed", (await page.locator(".tag-bar .tag-chip", { hasText: "Chores" }).count()) === 0);
-check("its Dunzo trackable deleted too", (await page.locator(".trackable-row").count()) === 1);
-check("remaining trackable is the other one", (await page.locator(".trackable-row").textContent()).includes("Plan vacation"));
+check("its Dunzo trackable deleted too", (await page.locator(".trackable-row").count()) === 2);
+check("remaining trackables are the others",
+  (await page.locator(".trackable-list").textContent()).includes("Plan vacation") &&
+  (await page.locator(".trackable-list").textContent()).includes("Anniversary"));
 
 console.log(failures.length ? `\n${failures.length} FAILURE(S)` : "\nALL TESTS PASSED");
 await browser.close();

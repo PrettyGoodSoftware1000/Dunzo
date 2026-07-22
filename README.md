@@ -11,6 +11,7 @@ A browser-based tracker for your stuff. Plain HTML/CSS/JavaScript hosted on GitH
   - **Exact Due Date** — a specific day.
   - **Goal Date** — a date range (pick the same day twice for a single-day goal). For sorting, the due date is the range's last day.
   - **Countdown** — enter a number of days (e.g. 30) and it counts down from today: "30 days left," "29 days left," … then "overdue."
+  - **Recurring** — repeats on a schedule: **weekly** (every N weeks on a weekday, e.g. "every other Tuesday"), **monthly** (the nth or last weekday, e.g. "first Wednesday of the month"), or **yearly** (a month/day, e.g. "every October 8th"). The list shows the next occurrence; the calendar shows every occurrence in view; the `.ics` export becomes a repeating event (`RRULE`) that Google Calendar expands automatically.
   - **None** — just shows how many days it's been listed.
 - **Sorting** — by effective due date, soonest first. Dateless items sit at the bottom, oldest first. Countdown items sort by the date they're counting down to, but that date is never shown.
 - **Trackable view** — click a title to open a large whiteboard for that Trackable. Add draggable, resizable text boxes and images (JPEG, PNG, or auto-playing GIFs — drag & drop them anywhere on the board). Images are compressed in your browser and stored inside the database, so everything stays on Firebase's free tier — no credit card needed. GIFs must be under ~350 KB (they can't be recompressed without losing animation). Edit, Dunzo, a subtle delete, and an X to close all live in the header.

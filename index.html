@@ -106,6 +106,7 @@
         <button class="choice-btn" data-value="exact">Exact Due Date</button>
         <button class="choice-btn" data-value="goal">Goal Date</button>
         <button class="choice-btn" data-value="countdown">Countdown</button>
+        <button class="choice-btn" data-value="recurring">Recurring</button>
       </div>
 
       <div id="exact-fields" class="date-fields hidden">
@@ -127,6 +128,50 @@
         <label class="field-label">How many days?</label>
         <input id="countdown-days" type="number" min="1" max="3650" placeholder="e.g. 30" />
         <small class="hint">Counts down starting today.</small>
+      </div>
+
+      <div id="recurring-fields" class="date-fields hidden">
+        <label class="field-label">Repeats</label>
+        <div id="recur-kind-row" class="choice-row">
+          <button class="choice-btn" data-value="weekly" type="button">Weekly</button>
+          <button class="choice-btn" data-value="monthlyNth" type="button">Monthly</button>
+          <button class="choice-btn" data-value="yearly" type="button">Yearly</button>
+        </div>
+
+        <div id="recur-weekly" class="recur-sub hidden">
+          <div class="range-row">
+            <select id="recur-interval">
+              <option value="1">Every</option>
+              <option value="2">Every other</option>
+              <option value="3">Every 3rd</option>
+              <option value="4">Every 4th</option>
+            </select>
+            <select id="recur-weekday"></select>
+          </div>
+          <label class="field-label">Starting on / after</label>
+          <input id="recur-start" type="date" />
+          <small class="hint">Anchors which weeks — e.g. pick the first Tuesday you want it.</small>
+        </div>
+
+        <div id="recur-monthly" class="recur-sub hidden">
+          <div class="range-row">
+            <select id="recur-nth">
+              <option value="1">First</option>
+              <option value="2">Second</option>
+              <option value="3">Third</option>
+              <option value="4">Fourth</option>
+              <option value="-1">Last</option>
+            </select>
+            <select id="recur-monthweekday"></select>
+            <span class="range-sep">of the month</span>
+          </div>
+        </div>
+
+        <div id="recur-yearly" class="recur-sub hidden">
+          <label class="field-label">Every year on</label>
+          <input id="recur-date" type="date" />
+          <small class="hint">The year is ignored — only the month and day repeat.</small>
+        </div>
       </div>
 
       <label class="field-label">Priority</label>
